@@ -1,0 +1,266 @@
+# The curriculum: the single source of truth for the textbook's structure.
+#
+# Each lesson's markdown lives at content/lessons/<module slug>/<lesson slug>.md.
+# Lessons without a file show up on the site as "Planned".
+#
+# Projects ([[projects]] at the bottom) live at content/projects/<slug>.md and appear
+# under the Projects tab. Projects without a file show as "Planned".
+#
+# TEXTBOOK: concepts, idioms and techniques
+#   Part I   - write correct, idiomatic modern C++ (C++20)
+#   Part II  - understand the machine and make code fast, with measurements
+#   Part III - concurrency: threads, atomics, memory model, lock-free structures
+#   Part IV  - low-latency techniques and data on the wire
+#   Part V   - numerical foundations
+# PROJECTS: build real quant / trading components, applying the textbook
+
+[[parts]]
+title = "Part I · Modern C++ Foundations"
+summary = "Write correct, idiomatic C++20. Every later chapter on speed assumes you can reason precisely about what your code means: object lifetimes, value categories, and the cost of every abstraction."
+
+  [[parts.modules]]
+  slug = "foundations"
+  title = "The Toolchain and the Mental Model"
+  summary = "What actually happens between your source file and a running process, and how to set up a build that catches bugs early."
+  lessons = [
+    { slug = "compilation-model", title = "How C++ Becomes Machine Code", summary = "Preprocessing, translation units, compilation, linking, and the one-definition rule." },
+    { slug = "build-and-tooling", title = "Compilers, Flags and Sanitizers", summary = "Optimization levels, warnings, -march, CMake basics, and why ASan/UBSan are always on in development." },
+    { slug = "types-and-memory", title = "Types, Objects and Memory", summary = "Fundamental types, sizes and alignment, object lifetime, and the undefined behaviour that will bite you." },
+    { slug = "references-and-pointers", title = "Values, References and Pointers", summary = "Pass-by-value vs reference, const-correctness, pointer arithmetic, and ownership vocabulary." },
+  ]
+
+  [[parts.modules]]
+  slug = "core-language"
+  title = "Core Language"
+  summary = "Classes, resource management and the features that make C++ both safe and zero-overhead."
+  lessons = [
+    { slug = "functions", title = "Functions, Overloading and Inlining", summary = "Calling conventions in brief, overload resolution, default arguments, inline and ODR." },
+    { slug = "classes-and-raii", title = "Classes and RAII", summary = "Constructors, destructors, invariants, and tying resource lifetime to scope." },
+    { slug = "special-members", title = "The Rule of Zero, Three and Five", summary = "Copy and move constructors and assignment, and when the compiler writes them for you." },
+    { slug = "move-semantics", title = "Value Categories and Move Semantics", summary = "lvalues, rvalues, std::move, perfect forwarding, and copy elision." },
+    { slug = "lambdas", title = "Lambdas and Callables", summary = "Captures, closures, std::function's cost, and passing callables without allocating." },
+    { slug = "vocabulary-types", title = "Vocabulary Types", summary = "optional, variant, expected, span, string_view, structured bindings, and enum class." },
+    { slug = "error-handling", title = "Error Handling Strategies", summary = "Exceptions, error codes and std::expected, and what is acceptable on a hot path." },
+  ]
+
+  [[parts.modules]]
+  slug = "templates"
+  title = "Generic and Compile-Time Programming"
+  summary = "Move work from run time to compile time, and write abstractions that cost nothing."
+  lessons = [
+    { slug = "templates-basics", title = "Function and Class Templates", summary = "Instantiation, specialization, and how templates generate code." },
+    { slug = "type-deduction", title = "Type Deduction and auto", summary = "Template argument deduction, auto, decltype, and forwarding references." },
+    { slug = "constexpr", title = "constexpr, consteval and Compile-Time Computation", summary = "Lookup tables and validation done by the compiler." },
+    { slug = "concepts", title = "Concepts and Constraints", summary = "Readable constraints, better errors, and overloading on capabilities." },
+    { slug = "variadic", title = "Variadic Templates and Fold Expressions", summary = "Parameter packs, tuples, and compile-time loops." },
+    { slug = "static-polymorphism", title = "Static Polymorphism: CRTP and Policies", summary = "Replacing virtual calls with templates when the type is known at compile time." },
+    { slug = "type-traits", title = "Type Traits and Metaprogramming", summary = "type_traits, if constexpr, and SFINAE in the rare cases you still need it." },
+  ]
+
+  [[parts.modules]]
+  slug = "stl"
+  title = "The Standard Library, Critically"
+  summary = "Know what every container and algorithm costs, so you know when to use it and when to replace it."
+  lessons = [
+    { slug = "containers-and-complexity", title = "Containers and Their Real Costs", summary = "Big-O vs constant factors, node-based vs contiguous storage." },
+    { slug = "vector-internals", title = "Inside std::vector", summary = "Growth policy, reserve, iterator invalidation, and why vector usually wins." },
+    { slug = "algorithms-and-ranges", title = "Algorithms, Iterators and Ranges", summary = "The algorithms you should reach for before writing a loop." },
+    { slug = "hash-maps", title = "Hash Maps and Their Discontents", summary = "unordered_map's node allocations, open addressing, and hashing integers well." },
+    { slug = "strings", title = "Strings and string_view", summary = "Small-string optimization, avoiding copies, and parsing without allocation." },
+    { slug = "smart-pointers", title = "Smart Pointers and Ownership", summary = "unique_ptr is free, shared_ptr isn't: atomics, control blocks, and when to use neither." },
+    { slug = "chrono", title = "Time with std::chrono", summary = "Clocks, durations, timestamps, and measuring time correctly." },
+  ]
+
+[[parts]]
+title = "Part II · Performance Engineering"
+summary = "Learn how modern CPUs actually execute code, how to measure instead of guess, and the techniques that turn correct code into fast code."
+
+  [[parts.modules]]
+  slug = "hardware"
+  title = "How the Machine Actually Works"
+  summary = "The mental model of a modern out-of-order CPU that every optimization decision depends on."
+  lessons = [
+    { slug = "cpu-pipeline", title = "Pipelines, Superscalar and Out-of-Order Execution", summary = "Instruction-level parallelism, latency vs throughput, and dependency chains." },
+    { slug = "memory-hierarchy", title = "The Memory Hierarchy", summary = "Registers, L1/L2/L3, DRAM: latencies, bandwidth, and why memory is the bottleneck." },
+    { slug = "cache-lines", title = "Cache Lines, Locality and Prefetching", summary = "Spatial and temporal locality, access patterns, and the hardware prefetcher." },
+    { slug = "branch-prediction", title = "Branch Prediction", summary = "Mispredict costs, predictable data, and branchless techniques." },
+    { slug = "virtual-memory", title = "Virtual Memory, TLBs and Huge Pages", summary = "Page tables, TLB misses, page faults, and pre-faulting memory." },
+    { slug = "numa", title = "Multicore, NUMA and Topology", summary = "Sockets, cores, hyperthreads, and why placement matters." },
+  ]
+
+  [[parts.modules]]
+  slug = "measuring"
+  title = "Measure First"
+  summary = "Performance work without measurement is guesswork. Build the habits and tools to measure properly."
+  lessons = [
+    { slug = "benchmarking", title = "Microbenchmarking Without Lying to Yourself", summary = "Dead-code elimination, warm-up, noise, and Google Benchmark." },
+    { slug = "profiling", title = "Profiling with perf and Flame Graphs", summary = "Sampling profilers, hardware counters, and finding the real hotspot." },
+    { slug = "reading-assembly", title = "Reading Assembly", summary = "Enough x86-64 to tell whether the compiler did what you wanted, using Compiler Explorer." },
+    { slug = "latency-measurement", title = "Measuring Latency: Percentiles and Tails", summary = "Why averages lie, histograms, p99/p99.9, rdtsc, and coordinated omission." },
+  ]
+
+  [[parts.modules]]
+  slug = "memory-performance"
+  title = "Memory and Data Layout"
+  summary = "The biggest wins usually come from how data is laid out and allocated, not from clever instructions."
+  lessons = [
+    { slug = "data-oriented-design", title = "Data-Oriented Design", summary = "Designing around access patterns instead of object hierarchies." },
+    { slug = "aos-vs-soa", title = "Array of Structs vs Struct of Arrays", summary = "Hot/cold splitting and layouts that the cache and SIMD units like." },
+    { slug = "alignment-and-padding", title = "Alignment, Padding and Packing", summary = "Struct layout rules, alignas, and shrinking hot structs." },
+    { slug = "allocation", title = "The Cost of Allocation", summary = "What malloc does, fragmentation, and keeping allocation off the hot path." },
+    { slug = "custom-allocators", title = "Arenas, Pools and PMR", summary = "Bump allocators, free-list pools, and std::pmr memory resources." },
+    { slug = "small-buffer-optimization", title = "Small-Buffer Optimization and Inline Storage", summary = "Inline storage for small containers and callables." },
+  ]
+
+  [[parts.modules]]
+  slug = "compiler"
+  title = "Working With the Optimizer"
+  summary = "Write code the compiler can optimize, and check that it did."
+  lessons = [
+    { slug = "inlining", title = "Inlining and Call Overhead", summary = "When calls are expensive, devirtualization, and [[gnu::always_inline]]." },
+    { slug = "aliasing", title = "Aliasing, restrict and Strict Aliasing", summary = "Why the compiler reloads memory, and how to give it permission not to." },
+    { slug = "ub-and-optimization", title = "Undefined Behaviour as an Optimization Contract", summary = "How UB enables optimizations and how that can delete your code." },
+    { slug = "pgo-lto", title = "LTO, PGO and Build Configuration", summary = "Whole-program optimization and profile-guided layout." },
+    { slug = "hints", title = "Branch Hints, Prefetch and Other Hints", summary = "[[likely]], __builtin_prefetch, and when hints actually help." },
+  ]
+
+  [[parts.modules]]
+  slug = "simd"
+  title = "SIMD and Vectorization"
+  summary = "Process many prices at once with the CPU's vector units."
+  lessons = [
+    { slug = "auto-vectorization", title = "Auto-Vectorization", summary = "Loops the compiler can vectorize, and reading the vectorizer's reports." },
+    { slug = "intrinsics", title = "Intrinsics: SSE, AVX2 and AVX-512", summary = "Writing vector code by hand, with loads, stores, shuffles and masks." },
+    { slug = "branchless", title = "Branchless Programming", summary = "Selects, masks and predication for unpredictable data." },
+    { slug = "simd-kernels", title = "SIMD Kernels for Finance", summary = "Vectorized returns, moving averages and option pricing." },
+  ]
+
+[[parts]]
+title = "Part III · Concurrency"
+summary = "Use multiple cores correctly, then quickly. From mutexes to the C++ memory model to lock-free queues used in production trading systems."
+
+  [[parts.modules]]
+  slug = "concurrency"
+  title = "Threads and Synchronization"
+  summary = "The fundamentals of multithreaded C++ and what synchronization costs."
+  lessons = [
+    { slug = "threads", title = "Threads, jthread and Thread Lifetimes", summary = "Creating, joining and stopping threads safely." },
+    { slug = "mutexes", title = "Mutexes, Locks and Condition Variables", summary = "Data races, lock granularity, contention, and deadlock." },
+    { slug = "false-sharing", title = "False Sharing and Cache Coherence", summary = "MESI, cache-line ping-pong, and padding shared state." },
+    { slug = "thread-pinning", title = "Thread Pinning, Isolation and Busy-Polling", summary = "isolcpus, affinity, and spinning vs blocking." },
+  ]
+
+  [[parts.modules]]
+  slug = "lock-free"
+  title = "Atomics and Lock-Free Programming"
+  summary = "The memory model, explained carefully, and the lock-free structures that low-latency systems rely on."
+  lessons = [
+    { slug = "atomics", title = "std::atomic and Read-Modify-Write", summary = "Atomicity, CAS loops, and what the hardware does." },
+    { slug = "memory-model", title = "The C++ Memory Model", summary = "happens-before, acquire/release, seq_cst, and relaxed." },
+    { slug = "spsc-queue", title = "The SPSC Ring Buffer", summary = "The most important data structure in low-latency trading, built and optimized step by step." },
+    { slug = "mpmc-and-aba", title = "MPMC Queues and the ABA Problem", summary = "Sequence-numbered slots, tagged pointers, and reclamation." },
+    { slug = "seqlock", title = "Seqlocks for Market Data Snapshots", summary = "One writer, many readers, no reader stalls." },
+  ]
+
+[[parts]]
+title = "Part IV · Low-Latency Techniques"
+summary = "The techniques and disciplines specific to latency-critical systems, and how data arrives on the wire. The Projects section puts these to work."
+
+  [[parts.modules]]
+  slug = "low-latency"
+  title = "Low-Latency Design Principles"
+  summary = "The discipline of the hot path."
+  lessons = [
+    { slug = "hot-path", title = "Anatomy of a Hot Path", summary = "Tick-to-trade, budgets in nanoseconds, and what must never happen on the hot path." },
+    { slug = "warm-caches", title = "Keeping Caches and Branch Predictors Warm", summary = "Dummy orders, cache warming, and avoiding cold starts." },
+    { slug = "networking", title = "Networking and Kernel Bypass", summary = "Sockets, UDP multicast, and an overview of DPDK, ef_vi and Onload." },
+    { slug = "low-latency-logging", title = "Logging Without Latency", summary = "Deferred formatting and asynchronous binary loggers." },
+    { slug = "event-driven", title = "Event-Driven Design", summary = "Event loops, dispatch with variant vs virtual, and single-threaded architectures." },
+  ]
+
+  [[parts.modules]]
+  slug = "wire-formats"
+  title = "Data on the Wire"
+  summary = "How market data and orders are encoded, and how to decode them without wasting a nanosecond."
+  lessons = [
+    { slug = "protocols", title = "Market Data and Order Entry Protocols", summary = "FIX, ITCH, OUCH, SBE: text vs binary encodings." },
+    { slug = "binary-parsing", title = "Parsing Binary Messages Fast", summary = "Endianness, memcpy vs reinterpret_cast, and zero-copy decoding." },
+    { slug = "serialization", title = "Zero-Copy Serialization", summary = "Fixed layouts, flyweights and schema-driven codecs." },
+  ]
+
+[[parts]]
+title = "Part V · Numerical Foundations"
+summary = "Get the numbers right before making them fast: floating point, exact prices, stable statistics and randomness."
+
+  [[parts.modules]]
+  slug = "numerics"
+  title = "Numerics for Quants"
+  summary = "The numerical building blocks behind pricing, risk and signals."
+  lessons = [
+    { slug = "floating-point", title = "Floating Point, Precisely", summary = "IEEE 754, rounding, cancellation, and -ffast-math." },
+    { slug = "fixed-point", title = "Fixed-Point Prices and Decimal Arithmetic", summary = "Why exchanges use integer ticks, and how to do the same." },
+    { slug = "summation-and-statistics", title = "Stable Summation and Online Statistics", summary = "Kahan summation, Welford variance, and rolling windows." },
+    { slug = "random-numbers", title = "Random Number Generation", summary = "Engines, distributions, reproducibility, and fast generators." },
+    { slug = "root-finding", title = "Root Finding and Special Functions", summary = "Newton, Brent, and computing the normal CDF accurately." },
+    { slug = "linear-algebra", title = "Linear Algebra and Eigen", summary = "Covariance matrices, Cholesky, and expression templates." },
+  ]
+
+# ---------------------------------------------------------------------------
+# PROJECTS: each one gives you motivation, an API to implement, and stepwise
+# hints. "uses" lists the textbook modules it draws on.
+
+[[projects]]
+slug = "order-book"
+title = "Limit Order Book"
+difficulty = "medium"
+summary = "Build the core data structure of every exchange and trading system: price levels, FIFO queues, and O(1) cancels."
+uses = ["stl", "memory-performance", "hardware"]
+
+[[projects]]
+slug = "itch-parser"
+title = "Binary Market Data Parser"
+difficulty = "medium"
+summary = "Decode an ITCH-style binary feed with zero allocations and zero copies, then benchmark millions of messages per second."
+uses = ["types-and-memory", "wire-formats", "measuring"]
+
+[[projects]]
+slug = "spsc-pipeline"
+title = "Lock-Free Market Data Pipeline"
+difficulty = "hard"
+summary = "Connect a feed thread to a strategy thread with a wait-free single-producer single-consumer ring buffer, and measure its latency."
+uses = ["concurrency", "lock-free", "measuring"]
+
+[[projects]]
+slug = "option-pricer"
+title = "Option Pricer: Black–Scholes and Monte Carlo"
+difficulty = "medium"
+summary = "Price European options in closed form, compute Greeks and implied volatility, then verify with a Monte Carlo engine."
+uses = ["numerics", "simd", "templates"]
+
+[[projects]]
+slug = "matching-engine"
+title = "Matching Engine"
+difficulty = "hard"
+summary = "Match incoming orders against the book with price-time priority, supporting limit, market and IOC orders."
+uses = ["stl", "memory-performance"]
+
+[[projects]]
+slug = "async-logger"
+title = "Asynchronous Binary Logger"
+difficulty = "hard"
+summary = "Log from the hot path in tens of nanoseconds by deferring formatting to a background thread."
+uses = ["lock-free", "templates", "low-latency"]
+
+[[projects]]
+slug = "backtester"
+title = "Event-Driven Backtester"
+difficulty = "hard"
+summary = "Replay historical market data through a strategy deterministically, with simulated fills and P&L."
+uses = ["core-language", "templates", "low-latency"]
+
+[[projects]]
+slug = "tick-to-trade"
+title = "Capstone: Tick-to-Trade System"
+difficulty = "hard"
+summary = "Wire parser, book, strategy, risk and order gateway into one pipeline and drive tick-to-trade latency down."
+uses = ["low-latency", "lock-free", "memory-performance"]

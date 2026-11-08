@@ -1,0 +1,6 @@
+.venv
+site
+site.tmp
+site.old
+**/__pycache__
+.git
