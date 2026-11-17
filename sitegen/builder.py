@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import render, toolchain
 from . import judge
-from .content import CONTENT, ROOT, load_curriculum, load_problems, load_projects
+from .content import CONTENT, ROOT, load_curriculum, load_problems, load_projects, load_puzzles
 
 SITE = ROOT / "site"
 STATIC = ROOT / "static"
@@ -47,6 +47,7 @@ def build(base: str = "", quiet: bool = False, fetch: bool = True) -> Path:
         _write(tmp / les.url.lstrip("/"), render.lesson_page(parts, les, prev, nxt, base))
 
     _write(tmp / "practice" / "index.html", render.practice_index(problems, base))
+    _write(tmp / "puzzles" / "index.html", render.puzzles_page(load_puzzles(), base))
     for i, p in enumerate(problems):
         prev = problems[i - 1] if i > 0 else None
         nxt = problems[i + 1] if i + 1 < len(problems) else None

@@ -1,0 +1,276 @@
+# Concurrency and memory-model puzzles. Format: see cpp.toml.
+
+[[puzzle]]
+id = "racy-counter"
+rating = 800
+prompt = "Two threads each run this loop on a shared `int counter = 0;`, then both are joined. What is `counter`?"
+code = '''
+for (int i = 0; i < 1'000'000; ++i)
+    ++counter;
+'''
+choices = ["Always 2,000,000", "Always less than 2,000,000",
+           "Undefined behaviour: it's a data race (in practice, usually less than 2,000,000)", "Always 1,000,000"]
+answer = 2
+explain = """
+`++counter` is a load, an add and a store, and two threads interleave them, losing updates. Formally, unsynchronized
+conflicting accesses are a data race, which is undefined behaviour, so the compiler may even keep `counter` in a
+register for the whole loop. Use `std::atomic<int>` or a mutex.
+"""
+
+[[puzzle]]
+id = "atomic-counter"
+rating = 900
+prompt = "Same loop as a racy counter, but `counter` is `std::atomic<int>` and the loop does `counter.fetch_add(1, std::memory_order_relaxed)`. After joining both threads, what is `counter`?"
+choices = ["Exactly 2,000,000", "At most 2,000,000", "Undefined: relaxed ordering allows lost updates", "Exactly 1,000,000"]
+answer = 0
+explain = """
+Every atomic read-modify-write is indivisible, whatever memory order you use. `relaxed` only drops ordering
+guarantees for *other* memory; the counter itself never loses an increment. The joins then make the final value
+visible to the main thread.
+"""
+
+[[puzzle]]
+id = "double-lock"
+rating = 1000
+prompt = "A thread locks a `std::mutex` and, while holding it, calls a function that locks the same mutex again. What happens?"
+choices = ["The second lock succeeds; it's reentrant", "The second lock throws `std::system_error`",
+           "Undefined behaviour: in practice the thread usually deadlocks on itself", "The first lock is released"]
+answer = 2
+explain = """
+`std::mutex` isn't recursive; locking it again from the owning thread is undefined behaviour, and the usual
+result is a self-deadlock. `std::recursive_mutex` allows it, but usually the better fix is to restructure the code
+so the inner function expects the lock to be held already.
+"""
+
+[[puzzle]]
+id = "lock-order"
+rating = 1100
+prompt = "Thread 1 locks `a` then `b`. Thread 2 locks `b` then `a`. Which change reliably removes the deadlock?"
+choices = ["Add `std::this_thread::yield()` between the two locks", "Lock both with `std::scoped_lock lk(a, b);` in both threads",
+           "Make both mutexes `std::recursive_mutex`", "Make thread 2 sleep for 1 ms first"]
+answer = 1
+explain = """
+`std::scoped_lock` (and `std::lock`) acquire several mutexes with a deadlock-avoidance algorithm, so the order
+you list them in doesn't matter. The other classic fix is a global lock order that every thread follows. Yields and
+sleeps only make the deadlock rarer, which is worse: it will now happen in production.
+"""
+
+[[puzzle]]
+id = "magic-statics"
+rating = 1200
+prompt = "Many threads call `get()` for the first time at the same moment. What happens?"
+code = '''
+Widget& get() {
+    static Widget w;
+    return w;
+}
+'''
+choices = ["`w` may be constructed more than once", "It's a data race: undefined behaviour",
+           "`w` is constructed exactly once; other threads wait until it's done", "It deadlocks"]
+answer = 2
+explain = """
+Since C++11, initialization of a function-local static is thread-safe ("magic statics"): the compiler emits a
+guard, one thread runs the constructor, and the others block until it finishes. After that, each call costs one
+well-predicted check. It's the simplest correct lazy singleton.
+"""
+
+[[puzzle]]
+id = "cv-predicate"
+rating = 1300
+prompt = "Why should you call `cv.wait(lock, [&]{ return ready; })` rather than plain `cv.wait(lock)`?"
+choices = ["It's faster", "It handles spurious wakeups, and a notify that happened before the wait",
+           "Plain `wait` doesn't release the mutex", "The predicate form doesn't need a mutex"]
+answer = 1
+explain = """
+`wait` may return without any notify (a spurious wakeup), and a `notify_one` sent before the waiter started
+waiting is simply lost. Checking a condition that's protected by the mutex, in a loop, handles both: the predicate
+overload is exactly `while (!pred()) wait(lock);`.
+"""
+
+[[puzzle]]
+id = "shared-ptr-copies"
+rating = 1350
+prompt = "A global `const std::shared_ptr<Config> g` is set before any threads start. Many threads then each make their own copy (`auto mine = g;`) and drop it later. Is that safe?"
+choices = ["Yes: the reference count is updated atomically", "No: copying a `shared_ptr` from several threads is always a data race",
+           "Only if `Config` is immutable", "Only with `std::atomic<std::shared_ptr<Config>>`"]
+answer = 0
+explain = """
+The control block's counts are atomic, so concurrent copies and destructions of *different* `shared_ptr` objects
+are safe, even when they share ownership. Two threads **writing** the same `shared_ptr` object (say, reassigning
+`g`) would race; that's what `std::atomic<std::shared_ptr<T>>` is for. And the pointed-to `Config` needs its own
+synchronization if anyone mutates it.
+"""
+
+[[puzzle]]
+id = "joinable-terminate"
+rating = 1400
+prompt = "What happens when this program runs?"
+code = '''
+int main() {
+    std::thread t([] { /* some work */ });
+}
+'''
+choices = ["The thread finishes, then the program exits", "The thread is detached automatically",
+           "`std::terminate` is called", "It doesn't compile"]
+answer = 2
+explain = """
+`t` is still joinable when its destructor runs, and `std::thread`'s destructor calls `std::terminate` in that
+case. You must `join()` or `detach()` first. `std::jthread` (C++20) joins automatically in its destructor.
+"""
+
+[[puzzle]]
+id = "volatile-flag"
+rating = 1450
+prompt = "One thread sets `volatile bool done = true;` and another spins on `while (!done) {}`. What's wrong?"
+choices = ["Nothing: `volatile` makes it thread-safe", "It's a data race (undefined behaviour); `volatile` gives no atomicity or ordering",
+           "`volatile` makes the loop slower but it's correct", "`bool` can't be `volatile`"]
+answer = 1
+explain = """
+In C++, `volatile` only means "every access is observable": it's for memory-mapped I/O and signal handlers. It
+doesn't make accesses atomic or order them with other memory, so data written before `done = true` may not be
+visible. Use `std::atomic<bool>` with release/acquire.
+"""
+
+[[puzzle]]
+id = "false-sharing"
+rating = 1550
+prompt = "Two threads each increment their own counter as fast as they can. Why does it scale badly?"
+code = '''
+struct Counters {
+    std::atomic<long> a;   // only thread 1 touches a
+    std::atomic<long> b;   // only thread 2 touches b
+};
+'''
+choices = ["Atomics are always slow", "False sharing: `a` and `b` share a cache line, which bounces between cores",
+           "The threads contend on a hidden lock", "The OS schedules both threads on one core"]
+answer = 1
+explain = """
+Caches track ownership per 64-byte line. Each write needs the line in exclusive state, so the two cores keep
+stealing it from each other, even though they never touch the same variable. Put each counter on its own line:
+`alignas(std::hardware_destructive_interference_size)` or `alignas(64)`.
+"""
+
+[[puzzle]]
+id = "cas-weak"
+rating = 1650
+prompt = "Why is `compare_exchange_weak` normally used inside a loop?"
+choices = ["It can fail spuriously, even when the current value equals the expected one",
+           "It only works on the second try", "It doesn't update `expected` on failure", "It isn't atomic"]
+answer = 0
+explain = """
+On LL/SC architectures (ARM, POWER), the weak form maps to one load-linked/store-conditional attempt, which can fail
+if anything disturbs the reservation. You're already looping to recompute the desired value after real failures,
+so spurious ones cost nothing extra. Use `_strong` when a single attempt must be decisive.
+"""
+
+[[puzzle]]
+id = "relaxed-message"
+rating = 1750
+prompt = "`data` is a plain `int`. Is the assert guaranteed to hold?"
+code = '''
+// thread 1
+data = 42;
+ready.store(true, std::memory_order_relaxed);
+
+// thread 2
+while (!ready.load(std::memory_order_relaxed)) {}
+assert(data == 42);
+'''
+choices = ["Yes: thread 2 waited for `ready`", "Only on x86",
+           "No: relaxed doesn't order `data`, so this is a data race on `data`", "No: the loop may never end"]
+answer = 2
+explain = """
+Relaxed atomics give no happens-before relation, so the write to `data` doesn't have to be visible when thread 2
+sees `ready == true`, and the unsynchronized access to `data` is a data race. The fix is
+`store(true, memory_order_release)` paired with `load(memory_order_acquire)`. (On x86 the hardware happens to
+keep this order, but the compiler may still reorder it.)
+"""
+
+[[puzzle]]
+id = "lock-free-progress"
+rating = 1850
+prompt = "An increment written as a `compare_exchange_weak` loop on a `std::atomic<int>` is:"
+choices = ["Wait-free", "Lock-free, but not wait-free", "Obstruction-free only", "Blocking"]
+answer = 1
+explain = """
+Some thread's CAS always succeeds, so the system as a whole makes progress: that's lock-free. But one unlucky
+thread can keep losing the race and retrying forever, so it isn't wait-free (bounded steps per thread).
+`fetch_add` on hardware with an atomic add (x86 `lock xadd`) is wait-free.
+"""
+
+[[puzzle]]
+id = "seqlock-odd"
+rating = 1900
+prompt = "In a seqlock, a reader loads the sequence counter and sees an **odd** number. What does that mean?"
+choices = ["The data is stale", "A writer is in the middle of an update, so the reader should retry",
+           "The reader holds the lock", "The counter has overflowed"]
+answer = 1
+explain = """
+The writer increments the counter before and after each update, so it's odd while a write is in progress. A reader
+retries if the counter was odd, or changed between its reads before and after copying the data. Readers never block
+the writer, which makes seqlocks good for publishing market data snapshots.
+"""
+
+[[puzzle]]
+id = "aba"
+rating = 2000
+prompt = "In a lock-free stack, a thread reads `top == A`, gets preempted, then its CAS from `A` to `A->next` succeeds even though other threads popped `A`, popped `B`, and pushed `A` back. What's this called?"
+choices = ["A lost wakeup", "Priority inversion", "The ABA problem", "False sharing"]
+answer = 2
+explain = """
+The CAS only compares values, and the value is `A` again, but `A->next` is now stale (it points at the freed `B`).
+Fixes include tagged pointers (a version counter next to the pointer, updated with a double-width CAS), hazard
+pointers, and epoch-based reclamation.
+"""
+
+[[puzzle]]
+id = "store-buffering"
+rating = 2100
+prompt = "`x` and `y` start at 0. The stores use `memory_order_release` and the loads use `memory_order_acquire`. Can both `r1 == 0` and `r2 == 0`?"
+code = '''
+// thread 1                     // thread 2
+x.store(1, release);            y.store(1, release);
+r1 = y.load(acquire);           r2 = x.load(acquire);
+'''
+choices = ["No, never", "Yes", "Only on ARM", "Only if the threads run on different sockets"]
+answer = 1
+explain = """
+Release/acquire only order things *around* a synchronizing pair, and neither load reads the other thread's store,
+so nothing forbids it. Real hardware does it too: on x86 each store can wait in the core's store buffer while the
+later load runs. Only `memory_order_seq_cst` on all four operations (or seq_cst fences) rules this out.
+"""
+
+[[puzzle]]
+id = "x86-reorder"
+rating = 2200
+prompt = "x86-64's memory model (TSO) allows the hardware to make which reordering visible to other cores?"
+choices = ["A load reordered after a later load", "A store reordered after a later store",
+           "A store reordered after a later load from a different address", "A load reordered after a later store"]
+answer = 2
+explain = """
+x86 keeps loads ordered with loads and stores ordered with stores, but a store can sit in the store buffer while a
+later load (to another address) completes, which is StoreLoad reordering. That's why a seq_cst store on x86 compiles
+to `xchg` (or `mov` + `mfence`), while acquire loads and release stores are plain `mov`s.
+"""
+
+[[puzzle]]
+id = "spsc-indices"
+rating = 2300
+prompt = "In a single-producer single-consumer ring buffer, the producer writes the slot, then publishes `tail`. Which orderings are the minimum for correctness?"
+code = '''
+// producer
+buf[t % N] = item;
+tail.store(t + 1, /* ? */);
+
+// consumer
+auto t = tail.load(/* ? */);
+if (h != t) item = buf[h % N];
+'''
+choices = ["Both `relaxed`", "Store `release`, load `acquire`", "Both `seq_cst`", "Store `relaxed`, load `acquire`"]
+answer = 1
+explain = """
+The release store of `tail` makes the slot write visible to any thread that acquire-loads that value, which is
+exactly what the consumer needs. `seq_cst` also works but adds a full fence on x86 for nothing; `relaxed` on
+either side breaks the happens-before edge. The consumer's `head` store needs `release` too, so the producer
+doesn't overwrite a slot before it has been read.
+"""

@@ -1,0 +1,237 @@
+# Operating-systems puzzles (Linux, x86-64). Format: see cpp.toml.
+
+[[puzzle]]
+id = "fork-return"
+rating = 650
+prompt = "What does `fork()` return in the **child** process?"
+choices = ["The child's PID", "The parent's PID", "0", "-1"]
+answer = 2
+explain = """
+`fork()` returns twice: the child's PID in the parent, and `0` in the child. `-1` means it failed (no child was
+created). The child can find its parent with `getppid()`.
+"""
+
+[[puzzle]]
+id = "page-size"
+rating = 750
+prompt = "What is the default page size on x86-64 Linux?"
+choices = ["512 bytes", "4 KiB", "64 KiB", "2 MiB"]
+answer = 1
+explain = """
+Base pages are 4 KiB. x86-64 also supports 2 MiB and 1 GiB huge pages, which you opt into
+(`MAP_HUGETLB`, hugetlbfs, or transparent huge pages). `sysconf(_SC_PAGESIZE)` tells you at run time.
+"""
+
+[[puzzle]]
+id = "which-syscall"
+rating = 850
+prompt = "Which of these is a system call (rather than a C library function that may *use* one)?"
+choices = ["`printf`", "`malloc`", "`write`", "`memcpy`"]
+answer = 2
+explain = """
+`write` is a thin wrapper around the `write` system call. `printf` formats into a buffer and eventually calls
+`write`; `malloc` manages a heap and occasionally calls `brk` or `mmap`; `memcpy` never enters the kernel.
+`strace` shows the system calls a program actually makes.
+"""
+
+[[puzzle]]
+id = "cheapest-op"
+rating = 900
+prompt = "Which is typically the **cheapest**?"
+choices = ["A non-inlined function call", "A system call such as `getppid()`", "A context switch between two threads",
+           "A context switch between two processes"]
+answer = 0
+explain = """
+A function call costs a few nanoseconds. A system call crosses into the kernel and back (roughly 50-200 ns, more
+with Spectre/Meltdown mitigations). A context switch saves and restores state and pollutes caches (microseconds),
+and switching between processes can also cost TLB entries.
+"""
+
+[[puzzle]]
+id = "zombie"
+rating = 1000
+prompt = "What is a **zombie** process?"
+choices = ["A process stuck in an infinite loop", "A child that has exited but whose parent hasn't called `wait()` on it yet",
+           "A child whose parent exited first", "A process that ignores `SIGTERM`"]
+answer = 1
+explain = """
+When a process exits, the kernel keeps its PID and exit status until the parent collects it with `wait`/`waitpid`.
+Until then it's a zombie (state `Z` in `ps`). A child whose parent died first is an *orphan*; it's re-parented
+to init (or a subreaper), which reaps it.
+"""
+
+[[puzzle]]
+id = "fork-fork"
+rating = 1100
+prompt = "How many lines does this print?"
+code = '''
+int main() {
+    fork();
+    fork();
+    printf("x\n");
+}
+'''
+choices = ["2", "3", "4", "8"]
+answer = 2
+explain = """
+The first `fork` makes 2 processes; each of them runs the second `fork`, making 4. All 4 execute the `printf`.
+`n` sequential forks give `2^n` processes.
+"""
+
+[[puzzle]]
+id = "sigkill"
+rating = 1150
+prompt = "Which signal can a process **not** catch, block or ignore?"
+choices = ["`SIGTERM`", "`SIGINT`", "`SIGSEGV`", "`SIGKILL`"]
+answer = 3
+explain = """
+`SIGKILL` (and `SIGSTOP`) are handled entirely by the kernel. That's why a clean shutdown should start with
+`SIGTERM`, which the program can catch to flush state, and only escalate to `SIGKILL` if it doesn't exit.
+"""
+
+[[puzzle]]
+id = "fork-cow"
+rating = 1200
+prompt = "After `fork()`, the child sets a global `int x` from 0 to 5. What does the parent see when it reads `x`?"
+choices = ["5", "0", "Either, it's a race", "The parent crashes with a page fault"]
+answer = 1
+explain = """
+Parent and child have separate address spaces. Pages are shared copy-on-write after `fork`, so the child's write
+triggers a fault that gives it a private copy of the page. The parent's `x` stays 0, even though `&x` is the same
+virtual address in both.
+"""
+
+[[puzzle]]
+id = "thread-private"
+rating = 1250
+prompt = "Which of these do threads in the same process **not** share?"
+choices = ["The heap", "Global variables", "Open file descriptors", "Their call stacks and registers"]
+answer = 3
+explain = """
+Threads share one address space, the heap, globals and the file descriptor table. Each thread has its own stack,
+registers (including the instruction pointer) and `thread_local` storage. The stacks still live in the shared
+address space, so a pointer to another thread's local variable works (and is a common source of bugs).
+"""
+
+[[puzzle]]
+id = "tlb"
+rating = 1350
+prompt = "What does the TLB cache?"
+choices = ["Recently used cache lines", "Virtual-to-physical page translations", "Branch targets",
+           "Recently opened files"]
+answer = 1
+explain = """
+The Translation Lookaside Buffer caches page-table entries, so most memory accesses don't need a page-table walk.
+It holds only a few thousand entries, so a large working set of 4 KiB pages causes TLB misses; huge pages let each
+entry cover 2 MiB.
+"""
+
+[[puzzle]]
+id = "write-durable"
+rating = 1450
+prompt = "`write(fd, buf, n)` on a regular file has just returned `n`. Then the machine loses power. Is the data on disk?"
+choices = ["Yes, `write` only returns once data is on disk", "Not necessarily: it may only be in the page cache until `fsync`",
+           "Only if the file was opened with `O_APPEND`", "No, never: `write` doesn't touch the disk"]
+answer = 1
+explain = """
+`write` copies into the kernel's page cache and returns; the kernel writes dirty pages back later. Call `fsync`
+(or `fdatasync`, or open with `O_DSYNC`) when durability matters, such as before acknowledging a trade to a
+client. And durably creating a new file also needs an `fsync` of its directory.
+"""
+
+[[puzzle]]
+id = "printf-fork"
+rating = 1550
+prompt = "Run in a terminal, what does this print?"
+code = '''
+int main() {
+    printf("hi");
+    fork();
+    printf("\n");
+}
+'''
+choices = ["`hi` and two newlines", "`hi` twice, each on its own line", "`hi` once, on one line", "It's a race: anything"]
+answer = 1
+explain = """
+`stdout` to a terminal is line-buffered, so `"hi"` is still sitting in the process's user-space buffer when
+`fork` copies the process. Both processes then append `"\\n"` and flush, so `hi` appears twice. Call
+`fflush(stdout)` before `fork` to avoid duplicated output.
+"""
+
+[[puzzle]]
+id = "lazy-alloc"
+rating = 1650
+prompt = "A program calls `malloc(1 << 30)` (1 GiB), checks it isn't null, and never touches the memory. Roughly how much does its resident memory (RSS) grow?"
+choices = ["About 1 GiB", "Almost nothing", "About 512 MiB", "`malloc` fails unless 1 GiB of RAM is free"]
+answer = 1
+explain = """
+A large `malloc` becomes an `mmap` of anonymous memory. The kernel only reserves address space; physical pages
+are allocated on first touch, through page faults. That's why latency-sensitive programs pre-fault buffers at
+startup (touch every page, or use `MAP_POPULATE`/`mlock`) instead of paying for faults on the hot path.
+"""
+
+[[puzzle]]
+id = "mmap-private"
+rating = 1750
+prompt = "A file is mapped with `mmap(..., PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)` and the program writes to the mapping. What happens to the file?"
+choices = ["The write reaches the file when the mapping is unmapped", "The write reaches the file after `msync`",
+           "Nothing: the process gets a private copy-on-write copy of the page", "The write fails with `SIGSEGV`"]
+answer = 2
+explain = """
+`MAP_PRIVATE` mappings are copy-on-write: the first write to a page gives the process its own copy, and changes
+are never carried through to the file. Use `MAP_SHARED` when writes should reach the file (and `msync` to force
+them out).
+"""
+
+[[puzzle]]
+id = "fork-big-heap"
+rating = 1850
+prompt = "Why is `fork()` of a process with a 10 GiB heap much faster than copying 10 GiB?"
+choices = ["The kernel copies memory with DMA in the background", "Pages are shared copy-on-write; only page tables and kernel bookkeeping are copied",
+           "The child starts with an empty heap", "The heap is swapped out first"]
+answer = 1
+explain = """
+`fork` marks the pages read-only in both processes and copies the page tables. Data is copied only when one side
+writes to a page. Copying page tables for 10 GiB still takes milliseconds, which is one reason `posix_spawn` or
+`vfork` + `exec` is used to launch programs from big processes.
+"""
+
+[[puzzle]]
+id = "huge-pages"
+rating = 1950
+prompt = "A program randomly reads a 20 GiB in-memory table. Which change most directly cuts its TLB misses?"
+choices = ["Compile with `-O3`", "Back the table with 2 MiB huge pages", "Use `MAP_PRIVATE` instead of `MAP_SHARED`",
+           "Pin the thread to one core"]
+answer = 1
+explain = """
+With 4 KiB pages, 20 GiB is about 5 million pages, far beyond any TLB, so almost every random access misses.
+With 2 MiB pages it's about 10,000 pages, and each TLB entry covers 512 times more memory. Page-table walks get
+shorter too.
+"""
+
+[[puzzle]]
+id = "numa-first-touch"
+rating = 2100
+prompt = "On a two-socket server with default Linux policy, thread A (pinned to socket 0) allocates a 1 GiB buffer and fills it with `memset`. Thread B (pinned to socket 1) then reads it in a loop. Where does the memory live?"
+choices = ["Spread evenly across both sockets", "On socket 0, so every read by B is a remote access",
+           "On socket 1, because B reads it most", "Wherever the kernel happens to have free pages"]
+answer = 1
+explain = """
+Linux's default NUMA policy is **first touch**: a page is placed on the node of the CPU that first faults it in.
+A's `memset` touched every page, so all of it sits on socket 0, and B pays remote-memory latency and
+bandwidth on every miss. Initialize data on the thread that will use it, or use `numactl`/`mbind`.
+"""
+
+[[puzzle]]
+id = "vdso"
+rating = 2250
+prompt = "Why is `clock_gettime(CLOCK_MONOTONIC, ...)` usually much cheaper than other system calls on Linux?"
+choices = ["It's implemented in the vDSO, so it reads the clock in user space without entering the kernel",
+           "The kernel caches the result for 1 ms", "It uses a special fast `syscall` instruction",
+           "It isn't cheaper; all system calls cost the same"]
+answer = 0
+explain = """
+The kernel maps a small shared library, the vDSO, into every process. Its `clock_gettime` reads the TSC and
+kernel-maintained scaling data from a shared page, taking about 20 ns with no mode switch. That's why it's a
+practical timestamp source in low-latency code.
+"""

@@ -5,7 +5,9 @@ import html
 import json
 
 from . import toolchain
-from .content import Lesson, Problem, Project
+from .content import PUZZLE_TOPICS, Lesson, Problem, Project, Puzzle
+from .highlight import highlight
+from .md import Markdown
 from .md import render as md_render
 
 SITE_NAME = "cpp-guide"
@@ -41,6 +43,7 @@ def layout(title: str, body: str, base: str, active: str = "", sidebar: str = ""
     {nav('/lessons/', 'Textbook', 'lessons')}
     {nav('/projects/', 'Projects', 'projects')}
     {nav('/practice/', 'Practice', 'practice')}
+    {nav('/puzzles/', 'Puzzles', 'puzzles')}
   </nav>
   <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Switch theme">
     <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
@@ -346,3 +349,61 @@ def home_page(lessons: list[Lesson], problems: list[Problem], projects: list[Pro
 </section>
 <section class="prose home-intro">{intro}</section>"""
     return layout("Home", body, base, "home", body_class="page-home")
+
+
+# ----------------------------------------------------------------- puzzles
+def puzzles_page(puzzles: list[Puzzle], base: str) -> str:
+    inline = Markdown().inline
+    data = [{"id": z.id, "topic": z.topic, "rating": z.rating, "prompt": md_render(z.prompt)[0],
+             "code": highlight(z.code, "cpp") if z.code else "", "choices": [inline(c) for c in z.choices],
+             "answer": z.answer, "explain": md_render(z.explain)[0]} for z in puzzles]
+    counts = {t: sum(1 for z in puzzles if z.topic == t) for t in PUZZLE_TOPICS}
+    topic_chips = "".join(
+        f'<button class="chip active" type="button" data-topic="{t}" aria-pressed="true">{label} '
+        f'<span class="chip-count">{counts[t]}</span></button>' for t, label in PUZZLE_TOPICS.items() if counts[t])
+    body = f"""
+<div class="puzzles">
+  <section class="puzzle-main" aria-live="polite">
+    <div class="puzzle-card" id="puzzle-card">
+      <div class="puzzle-head">
+        <span class="puzzle-topic" id="puzzle-topic"></span>
+        <span class="puzzle-rating" id="puzzle-rating" hidden></span>
+        <span class="puzzle-rated" id="puzzle-rated"></span>
+      </div>
+      <div class="puzzle-prompt prose" id="puzzle-prompt"></div>
+      <div class="puzzle-code" id="puzzle-code" hidden><pre><code></code></pre></div>
+      <div class="puzzle-choices" id="puzzle-choices" role="group" aria-label="Answers"></div>
+      <div class="puzzle-result" id="puzzle-result" hidden>
+        <div class="puzzle-verdict" id="puzzle-verdict"></div>
+        <div class="puzzle-explain prose" id="puzzle-explain"></div>
+      </div>
+      <div class="puzzle-actions">
+        <span class="puzzle-hint" id="puzzle-hint">Press <kbd>1</kbd>–<kbd>4</kbd> to answer</span>
+        <button class="btn btn-primary" id="next-puzzle" type="button" hidden>Next puzzle <kbd>↵</kbd></button>
+      </div>
+    </div>
+    <p class="empty" id="puzzle-empty" hidden>Pick at least one topic to get puzzles.</p>
+  </section>
+
+  <aside class="puzzle-side">
+    <div class="rating-card">
+      <div class="rating-label">Your puzzle rating</div>
+      <div class="rating-row"><span class="rating-value" id="my-rating">1200</span><span class="rating-delta" id="my-delta"></span></div>
+      <svg class="rating-spark" id="rating-spark" viewBox="0 0 240 56" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <dl class="rating-stats">
+        <div><dt>Solved</dt><dd id="stat-solved">0 / 0</dd></div>
+        <div><dt>Streak</dt><dd id="stat-streak">0</dd></div>
+        <div><dt>Best</dt><dd id="stat-best">1200</dd></div>
+      </dl>
+    </div>
+    <div class="side-block">
+      <div class="side-label">Topics</div>
+      <div class="chips" id="topic-filter">{topic_chips}</div>
+    </div>
+    <ul class="recent" id="recent-list"></ul>
+    <button class="btn btn-ghost" id="reset-rating" type="button">Reset rating</button>
+    <p class="side-note">Only your first try at each puzzle is rated. Your rating is stored in this browser.</p>
+  </aside>
+</div>
+<script id="puzzle-data" type="application/json">{json.dumps(data).replace("</", "<\\/")}</script>"""
+    return layout("Puzzles", body, base, "puzzles", scripts=("puzzles.js",), body_class="page-puzzles")

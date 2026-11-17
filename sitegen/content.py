@@ -181,3 +181,43 @@ def find_problem(slug: str) -> Problem | None:
         if prob.slug == slug:
             return prob
     return None
+
+
+# ------------------------------------------------------------------ puzzles
+PUZZLES_DIR = CONTENT / "puzzles"
+PUZZLE_TOPICS = {"cpp": "C++", "os": "OS", "concurrency": "Concurrency"}
+
+
+@dataclass
+class Puzzle:
+    id: str
+    topic: str
+    rating: int
+    prompt: str
+    choices: list[str]
+    answer: int
+    explain: str
+    code: str = ""
+
+
+def load_puzzles() -> list[Puzzle]:
+    """Bite-sized multiple-choice puzzles from content/puzzles/<topic>.toml ([[puzzle]] tables)."""
+    puzzles: list[Puzzle] = []
+    seen: set[str] = set()
+    for path in sorted(PUZZLES_DIR.glob("*.toml")):
+        topic = path.stem
+        if topic not in PUZZLE_TOPICS:
+            raise ValueError(f"{path.name}: puzzle files must be named one of {sorted(PUZZLE_TOPICS)}")
+        for item in tomllib.loads(path.read_text()).get("puzzle", []):
+            pid = f"{topic}-{item['id']}"
+            where = f"{path.name} puzzle {item.get('id')!r}"
+            if pid in seen:
+                raise ValueError(f"{where}: duplicate id")
+            seen.add(pid)
+            choices = list(item["choices"])
+            answer = int(item["answer"])
+            if not 2 <= len(choices) <= 5 or not 0 <= answer < len(choices):
+                raise ValueError(f"{where}: needs 2-5 choices and a 0-based answer index within them")
+            puzzles.append(Puzzle(pid, topic, int(item["rating"]), item["prompt"].strip(), choices, answer,
+                                  item["explain"].strip(), item.get("code", "").strip("\n")))
+    return puzzles

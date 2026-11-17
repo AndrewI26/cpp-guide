@@ -1,0 +1,371 @@
+# C++ language puzzles. Each [[puzzle]] has:
+#   id       unique within this file (the page uses "cpp-<id>")
+#   rating   puzzle difficulty on the Elo scale (players start at 1200)
+#   prompt   Markdown question; code is an optional C++ snippet shown under it
+#   choices  2-5 answers (inline Markdown), answer = 0-based index of the correct one
+#   explain  Markdown shown after answering
+# Assume a typical 64-bit Linux target (x86-64, GCC or Clang) unless a puzzle says otherwise.
+
+[[puzzle]]
+id = "sizeof-char"
+rating = 600
+prompt = "What is `sizeof(char)`?"
+choices = ["Always 1", "1 on most platforms, but it can be 2", "8, the number of bits in a byte", "It depends on the compiler"]
+answer = 0
+explain = """
+`sizeof` measures in units of `char`, so `sizeof(char)` is 1 **by definition**. What varies is how many bits a
+`char` has (`CHAR_BIT`), which is 8 on every platform you're likely to meet.
+"""
+
+[[puzzle]]
+id = "array-length"
+rating = 700
+prompt = "What does this print?"
+code = '''
+int a[5] = {1, 2};
+std::cout << sizeof(a) / sizeof(a[0]);
+'''
+choices = ["2", "5", "8", "20"]
+answer = 1
+explain = """
+`sizeof(a)` is the size of the whole array (5 ints), regardless of how many elements were explicitly
+initialized; the rest are zero. Divide by one element's size to get 5. Prefer `std::size(a)` in modern C++:
+it does the same thing and refuses to compile if `a` has decayed to a pointer.
+"""
+
+[[puzzle]]
+id = "int-division"
+rating = 800
+prompt = "What does this print?"
+code = '''
+std::cout << 7 / 2 * 2.0;
+'''
+choices = ["7", "6", "6.5", "3"]
+answer = 1
+explain = """
+Operators of equal precedence group left to right: `7 / 2` is **integer** division and gives `3`, then
+`3 * 2.0` is `6.0`, which `std::cout` prints as `6`.
+"""
+
+[[puzzle]]
+id = "reserve-size"
+rating = 900
+prompt = "What does this print?"
+code = '''
+std::vector<int> v;
+v.reserve(10);
+std::cout << v.size() << ' ' << (v.capacity() >= 10);
+'''
+choices = ["10 1", "0 1", "0 0", "10 0"]
+answer = 1
+explain = """
+`reserve` allocates room for at least 10 elements but creates none, so `size()` stays 0 while `capacity()` is
+at least 10. Indexing `v[0]` here would be undefined behaviour. `resize(10)` is the call that creates elements.
+"""
+
+[[puzzle]]
+id = "signed-unsigned-compare"
+rating = 1000
+prompt = "What does this print?"
+code = '''
+int i = -1;
+unsigned u = 1;
+std::cout << (i < u);
+'''
+choices = ["1", "0", "Undefined behaviour", "It doesn't compile"]
+answer = 1
+explain = """
+In a comparison between `int` and `unsigned int`, the `int` is converted to `unsigned`. `-1` becomes
+`4294967295`, which is not less than 1, so it prints `0`. `-Wall` warns about this (`-Wsign-compare`), and
+C++20's `std::cmp_less(i, u)` compares the mathematical values correctly.
+"""
+
+[[puzzle]]
+id = "struct-padding"
+rating = 1100
+prompt = "What is `sizeof(S)` on x86-64?"
+code = '''
+struct S {
+    char a;
+    int  b;
+    char c;
+};
+'''
+choices = ["6", "8", "12", "16"]
+answer = 2
+explain = """
+`int` needs 4-byte alignment, so 3 padding bytes follow `a`. After `c` the struct is padded again so its size
+is a multiple of its alignment (4), so arrays of `S` keep every `b` aligned: 1 + 3 + 4 + 1 + 3 = **12**.
+Ordering members from largest to smallest (`int b; char a; char c;`) gets it down to 8.
+"""
+
+[[puzzle]]
+id = "vexing-parse"
+rating = 1200
+prompt = "What does the marked line declare?"
+code = '''
+struct Widget { int x = 0; };
+
+int main() {
+    Widget w();   // <-- this line
+}
+'''
+choices = ["A default-constructed `Widget` named `w`", "A value-initialized `Widget` with `x == 0`",
+           "A function `w` that takes no arguments and returns a `Widget`", "Nothing: it doesn't compile"]
+answer = 2
+explain = """
+This is the "most vexing parse": anything that can be read as a declaration is one, so `Widget w();` declares a
+function. Write `Widget w;` or `Widget w{};` to make an object. Compilers warn about it (`-Wvexing-parse`).
+"""
+
+[[puzzle]]
+id = "destruction-order"
+rating = 1250
+prompt = "What does this print?"
+code = '''
+struct P {
+    char c;
+    ~P() { std::cout << c; }
+};
+
+int main() {
+    P a{'a'};
+    P b{'b'};
+}
+'''
+choices = ["ab", "ba", "Either, it's unspecified", "Nothing"]
+answer = 1
+explain = """
+Automatic objects are destroyed in the **reverse** order of construction, so `b` goes first. That ordering is
+what makes RAII safe: an object constructed later may depend on an earlier one, so it must be torn down first.
+"""
+
+[[puzzle]]
+id = "move-const"
+rating = 1300
+prompt = "What happens here?"
+code = '''
+const std::string s = "a fairly long string that won't fit in SSO";
+std::string t = std::move(s);
+'''
+choices = ["`s` is moved from and is left empty", "`s` is copied, and still holds its value",
+           "It doesn't compile: you can't move a `const` object", "Undefined behaviour"]
+answer = 1
+explain = """
+`std::move(s)` is just a cast, here to `const std::string&&`. The move constructor takes a non-const
+`std::string&&`, so it can't bind, and overload resolution picks the copy constructor (`const std::string&`
+binds to anything). You get a silent copy. Don't mark objects `const` if you intend to move from them.
+"""
+
+[[puzzle]]
+id = "vector-init"
+rating = 1350
+prompt = "What does this print?"
+code = '''
+std::vector<int> a(3, 1);
+std::vector<int> b{3, 1};
+std::cout << a.size() << b.size();
+'''
+choices = ["33", "32", "23", "22"]
+answer = 1
+explain = """
+Parentheses call the `(count, value)` constructor: three 1s. Braces prefer the `std::initializer_list`
+constructor whenever it's viable, so `b` holds the two elements `3, 1`.
+"""
+
+[[puzzle]]
+id = "virtual-in-ctor"
+rating = 1450
+prompt = "What does this print?"
+code = '''
+struct B {
+    B() { f(); }
+    virtual void f() { std::cout << "B"; }
+};
+struct D : B {
+    void f() override { std::cout << "D"; }
+};
+
+int main() { D d; }
+'''
+choices = ["B", "D", "BD", "Undefined behaviour"]
+answer = 0
+explain = """
+While `B`'s constructor runs, the `D` part doesn't exist yet, so the object's dynamic type is `B` and virtual
+calls dispatch to `B::f`. The same applies in destructors. (If `B::f` were pure virtual, the call would be
+undefined behaviour.)
+"""
+
+[[puzzle]]
+id = "range-for-push"
+rating = 1500
+prompt = "What happens?"
+code = '''
+std::vector<int> v{1, 2, 3};
+for (int x : v)
+    if (x == 2) v.push_back(4);
+'''
+choices = ["The loop visits 1, 2, 3", "The loop visits 1, 2, 3, 4",
+           "Undefined behaviour", "It doesn't compile"]
+answer = 2
+explain = """
+The range-for keeps `begin()` and `end()` iterators. `push_back` past capacity reallocates, which invalidates
+every iterator, and even without reallocation the saved `end` iterator is invalidated. Using them afterwards is
+undefined behaviour; in practice you may read freed memory. ASan reports it as heap-use-after-free.
+"""
+
+[[puzzle]]
+id = "signed-overflow-loop"
+rating = 1600
+prompt = "Compiled with `-O2`, what can this loop do?"
+code = '''
+int n = 0;
+for (int i = 1; i > 0; i *= 2) ++n;
+std::cout << n;
+'''
+choices = ["Always prints 31", "Always prints 32", "Anything: it may loop forever, because signed overflow is undefined",
+           "Throws `std::overflow_error`"]
+answer = 2
+explain = """
+Signed overflow is undefined behaviour, so the optimizer may assume `i *= 2` on a positive `i` stays positive,
+which makes `i > 0` always true. GCC and Clang really do turn loops like this into infinite loops at `-O2`. Use
+unsigned arithmetic (which wraps) or check before multiplying.
+"""
+
+[[puzzle]]
+id = "lambda-dangling"
+rating = 1700
+prompt = "What does this print?"
+code = '''
+auto make() {
+    int x = 42;
+    return [&] { return x; };
+}
+
+int main() {
+    auto f = make();
+    std::cout << f();
+}
+'''
+choices = ["42", "0", "Undefined behaviour", "It doesn't compile"]
+answer = 2
+explain = """
+The lambda captures `x` **by reference**, and `x` dies when `make` returns. Calling `f()` reads a dangling
+reference: undefined behaviour, even if it happens to print 42 today. Capture by value (`[x]` or `[=]`) when a
+lambda outlives the scope it was created in.
+"""
+
+[[puzzle]]
+id = "unique-ptr-size"
+rating = 1800
+prompt = "On x86-64, what is `sizeof(std::unique_ptr<int, void(*)(int*)>)`?"
+choices = ["8", "16", "24", "It depends on the deleter's value"]
+answer = 1
+explain = """
+With the default (empty) deleter, `unique_ptr` uses empty-base / `[[no_unique_address]]` tricks so it's the size
+of a raw pointer, 8 bytes. A function-pointer deleter has state (the pointer itself), so it adds another 8. Use a
+stateless functor or a lambda type (`decltype([](int* p){ free(p); })`) to keep it at 8.
+"""
+
+[[puzzle]]
+id = "copy-elision"
+rating = 1900
+prompt = "In C++17, what does this print?"
+code = '''
+struct T {
+    T()           { std::cout << "c"; }
+    T(const T&)   { std::cout << "C"; }
+    T(T&&)        { std::cout << "M"; }
+};
+
+T make() { return T{}; }
+
+int main() { T t = make(); }
+'''
+choices = ["c", "cM", "cMM", "cC"]
+answer = 0
+explain = """
+Since C++17, initializing an object from a prvalue of the same type is **guaranteed** copy elision: `T{}` in
+`make` is constructed directly in `t`'s storage. No copy or move constructor runs (and none even needs to exist).
+Returning a *named* local (NRVO) is still only an optional optimization.
+"""
+
+[[puzzle]]
+id = "ambiguous-overload"
+rating = 2000
+prompt = "What happens?"
+code = '''
+void f(long)   { std::cout << "long"; }
+void f(double) { std::cout << "double"; }
+
+int main() { f(1); }
+'''
+choices = ["Prints long", "Prints double", "It doesn't compile: the call is ambiguous", "Implementation-defined"]
+answer = 2
+explain = """
+`1` is an `int`. `int` to `long` is an integral *conversion* (not a promotion; only `int` itself is the promotion
+target), and `int` to `double` is a floating-integral conversion. Both have the same rank, so neither is better
+and the call is ambiguous. `f(1L)` or an `f(int)` overload fixes it.
+"""
+
+[[puzzle]]
+id = "vector-bool-proxy"
+rating = 2100
+prompt = "What does this print?"
+code = '''
+std::vector<bool> v{false};
+auto x = v[0];
+v[0] = true;
+std::cout << x;
+'''
+choices = ["0", "1", "Undefined behaviour", "It doesn't compile"]
+answer = 1
+explain = """
+`std::vector<bool>` packs bits, so `operator[]` returns a proxy object (`std::vector<bool>::reference`), not a
+`bool&`. `auto` deduces the proxy, which still refers to bit 0, so it sees the later write and prints `1`. With
+`std::vector<int>`, `auto x = v[0]` would be an independent copy. Write `bool x = v[0];` when you want a value.
+"""
+
+[[puzzle]]
+id = "static-init-fiasco"
+rating = 2200
+prompt = "`a.cpp` and `b.cpp` are separate translation units. What value does `b` get?"
+code = '''
+// a.cpp
+int compute() { return 42; }
+int a = compute();
+
+// b.cpp
+extern int a;
+int b = a + 1;
+'''
+choices = ["Always 43", "Always 1", "43 or 1, depending on initialization order across translation units",
+           "Undefined behaviour: reading an uninitialized int"]
+answer = 2
+explain = """
+Dynamic initialization order across translation units is unspecified (the "static initialization order
+fiasco"). Static storage is zero-initialized first, so if `b.cpp` runs first it reads `a == 0` and `b` becomes 1;
+that's well-defined, just not what you wanted. Make `a` `constexpr`/`constinit`, or wrap it in a function with a
+local static.
+"""
+
+[[puzzle]]
+id = "strict-aliasing"
+rating = 2300
+prompt = "With `-O2`, what can `f` return?"
+code = '''
+int f(int* i, float* fl) {
+    *i = 1;
+    *fl = 2.0f;
+    return *i;
+}
+// called as: int x; f(&x, reinterpret_cast<float*>(&x));
+'''
+choices = ["Always 1", "Always the bit pattern of 2.0f", "Undefined behaviour: the compiler may assume `i` and `fl` don't alias, so it often returns 1",
+           "It doesn't compile"]
+answer = 2
+explain = """
+Under strict aliasing, an `int` object may not be accessed through a `float` lvalue, so the compiler assumes
+`*fl = ...` can't modify `*i` and folds `return *i` to `return 1`. The call writes an `int` through a `float*`,
+which is undefined behaviour. Use `std::memcpy` or `std::bit_cast` to reinterpret bytes.
+"""
