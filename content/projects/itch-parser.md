@@ -68,8 +68,8 @@ len=17:2:6 type='D':1:4 timestamp_(u64):8:1 order_id_(u64):8:2
 
 ## The API
 
-The full header, a test suite, a wire-format encoder for tests, and a benchmark are in
-`starter/projects/itch-parser/`.
+Create `feed.hpp` with the interface below. You also write the tests, a small encoder that builds wire-format
+messages for them, and a benchmark.
 
 ```cpp feed.hpp
 namespace feed {
@@ -112,7 +112,6 @@ struct VolumeCounter {
 ```
 
 ```bash
-cd starter/projects/itch-parser
 g++ -std=c++20 -O2 -Wall -Wextra -fsanitize=address,undefined feed_test.cpp -o test && ./test
 g++ -std=c++20 -O2 -march=native feed_bench.cpp -o bench && ./bench
 ```
@@ -123,7 +122,7 @@ g++ -std=c++20 -O2 -march=native feed_bench.cpp -o bench && ./bench
 
 :::step Big-endian loads
 Implement `load_be<T>` for `uint16_t`, `uint32_t` and `uint64_t`. It must be correct for **unaligned**
-addresses and must not violate strict aliasing. The tests deliberately load from odd offsets, and UBSan will
+addresses and must not violate strict aliasing. Your tests should deliberately load from odd offsets, and UBSan will
 flag misaligned access.
 :::hint
 `*reinterpret_cast<const std::uint32_t*>(p)` is undefined behaviour twice over: it breaks strict aliasing, and
@@ -140,7 +139,7 @@ time with no runtime branch.
 :::step Framing loop
 Write the outer loop of `parse`: while at least 2 bytes remain, read the length; if the whole frame isn't there
 yet, stop; otherwise dispatch it and advance by `2 + length`. Return the bytes consumed and messages handled.
-Ignore message contents for now: just call `on_unknown` for everything and get `test_partial_frames` passing.
+Ignore message contents for now: just call `on_unknown` for everything and write a test that feeds a stream in partial frames until it passes.
 :::hint
 Be careful with unsigned arithmetic when checking "is the whole frame present". `remaining - 2 < len` is safe
 only if you've already checked `remaining >= 2`. Otherwise `size_t` wraps around to a huge number.
@@ -151,7 +150,7 @@ only if you've already checked `remaining >= 2`. Otherwise `size_t` wraps around
 error *without* advancing past the bad frame), decode each field at its offset, and call `h.on(msg)`.
 :::hint
 Write the field offsets down as named constants, or compute them from the table above. A single off-by-one is
-the most common bug here. The test with maximal values (`0xFFFF...`) catches swapped or truncated fields.
+the most common bug here. A test with maximal values (`0xFFFF...`) catches swapped or truncated fields.
 :::hint
 Body offsets for Add Order, relative to the first byte after the type: timestamp 0, order_id 8, side 16,
 shares 17, symbol 21, price 29. Total 33 bytes, plus the type byte gives *L* = 34.
@@ -189,7 +188,7 @@ decodes each field lazily on access. Try it for `AddOrder` and compare.
 
 ## Testing
 
-The suite checks byte-order and unaligned loads, every message type, maximum field values, every possible
+Your suite should check byte-order and unaligned loads, every message type, maximum field values, every possible
 truncation point of a two-message stream, a 1,000-message stream delivered in irregular chunks, unknown types,
 and malformed lengths. Always run it under `-fsanitize=address,undefined`. Out-of-bounds reads at the end of the
 buffer are the classic parser bug, and ASan catches them.

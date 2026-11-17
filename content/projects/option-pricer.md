@@ -59,7 +59,8 @@ price ≈ e^(−rT) · mean( payoff(S_T) )
 
 ## The API
 
-The starter files are in `starter/projects/option-pricer/`: the header, tests and a benchmark.
+Create `pricer.hpp` with the interface below, then write your own tests (`pricer_test.cpp`) and a benchmark
+(`pricer_bench.cpp`). Each step says what to test.
 
 ```cpp pricer.hpp
 namespace pricer {
@@ -91,7 +92,6 @@ void bs_price_batch(std::span<const Option> in, std::span<double> out);
 ```
 
 ```bash
-cd starter/projects/option-pricer
 g++ -std=c++20 -O2 -Wall -Wextra -fsanitize=address,undefined pricer_test.cpp -o test && ./test
 g++ -std=c++20 -O2 -march=native pricer_bench.cpp -o bench && ./bench
 ```
@@ -101,7 +101,7 @@ g++ -std=c++20 -O2 -march=native pricer_bench.cpp -o bench && ./bench
 ## Implementation
 
 :::step The normal distribution
-Implement `norm_pdf` and `norm_cdf`. The test checks `N(−8) ≈ 6.22 × 10⁻¹⁶` to *relative* precision, so naive
+Implement `norm_pdf` and `norm_cdf`. Test that `N(−8) ≈ 6.22 × 10⁻¹⁶` to *relative* precision, so naive
 approaches that compute `1 − something` lose everything in the tail.
 :::hint
 `<cmath>` has `std::erf` and `std::erfc`. They're related to the normal CDF by a change of variable:
@@ -116,16 +116,16 @@ Implement `bs_price`. Factor out the shared pieces (`d1`, `d2`, the discount fac
 helper, since you'll reuse them for the Greeks. Check the textbook value: S = K = 100, r = 5%, σ = 20%, T = 1
 gives a call of **10.4506** and a put of **5.5735**.
 :::hint
-Put–call parity, C − P = S − K·e^(−rT), is an exact identity. The test checks it across a grid of strikes,
+Put–call parity, C − P = S − K·e^(−rT), is an exact identity. Test it across a grid of strikes,
 expiries and vols. If parity fails but the call is right, the bug is in your put formula.
 :::
 
 :::step Greeks
-Implement `bs_greeks` from the table above. The tests verify every Greek against **central finite differences**
+Implement `bs_greeks` from the table above. Verify every Greek in your tests against **central finite differences**
 of your own `bs_price`: bump one input up and down by *h*, and the difference quotient should match your
 analytic value.
 :::hint
-Theta is the change in value as calendar time passes, which *reduces* T. So theta = −∂V/∂T. The test computes it
+Theta is the change in value as calendar time passes, which *reduces* T. So theta = −∂V/∂T. Your test should compute it
 with exactly that sign.
 :::hint
 Gamma and vega are the same for calls and puts (parity is linear in S and has no σ), which is a quick sanity

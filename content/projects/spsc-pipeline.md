@@ -48,8 +48,8 @@ and `alignas`, thread pinning, ThreadSanitizer, and measuring latency distributi
 
 ## The API
 
-The starter files are in `starter/projects/spsc-pipeline/`: the header, tests (with a watchdog, so a broken
-queue fails instead of hanging), and a benchmark that measures throughput and round-trip latency.
+Create `spsc_queue.hpp` with the interface below. You also write the tests (give the threaded ones a watchdog, so
+a broken queue fails instead of hanging) and a benchmark that measures throughput and round-trip latency.
 
 ```cpp spsc_queue.hpp
 // A bounded, wait-free, single-producer single-consumer queue.
@@ -68,7 +68,6 @@ public:
 ```
 
 ```bash
-cd starter/projects/spsc-pipeline
 g++ -std=c++20 -O2 -Wall -Wextra -fsanitize=address,undefined -pthread spsc_test.cpp -o test && ./test
 g++ -std=c++20 -O2 -Wall -Wextra -fsanitize=thread -pthread spsc_test.cpp -o test_tsan && ./test_tsan
 g++ -std=c++20 -O2 -march=native -pthread spsc_bench.cpp -o bench && ./bench 2 3   # pin to CPUs 2 and 3
@@ -80,8 +79,8 @@ g++ -std=c++20 -O2 -march=native -pthread spsc_bench.cpp -o bench && ./bench 2 3
 
 :::step A single-threaded ring buffer
 Ignore threads for a moment. Build the ring with a `std::array<T, Capacity>` and two `std::size_t` counters,
-`head` (next slot to read) and `tail` (next slot to write). Make `test_single_thread`, `test_wraparound` and
-`test_non_trivial_type` pass.
+`head` (next slot to read) and `tail` (next slot to write). Write tests for single-threaded
+push/pop, wraparound past `Capacity`, and a non-trivial element type such as `std::string`, and make them pass.
 :::hint
 If the counters only ever increase, and you map them to slots with `counter & (Capacity - 1)`, then
 `tail - head` is always the number of elements: `0` means empty, `Capacity` means full. You never need a
@@ -95,7 +94,7 @@ subtraction wraps too.)
 :::step Make it thread-safe with atomics
 Now two threads run concurrently. The producer writes `tail` and the consumer writes `head`; each only *reads*
 the other's counter. Make both counters `std::atomic<std::size_t>` and choose a memory order for every load and
-store. Get `test_two_threads` passing under **TSan**.
+store. Write a two-thread test (one producer, one consumer, checking order) and get it passing under **TSan**.
 :::hint
 Think about what must be visible before what. The producer writes the element into the slot, *then* publishes
 it by advancing `tail`. The consumer must not see the new `tail` without also seeing the element. Which ordering

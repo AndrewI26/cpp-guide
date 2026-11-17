@@ -25,7 +25,6 @@ COPY pyproject.toml uv.lock README.md .python-version ./
 COPY sitegen ./sitegen
 COPY content ./content
 COPY static ./static
-COPY starter ./starter
 COPY examples ./examples
 
 RUN uv sync --frozen --no-dev \

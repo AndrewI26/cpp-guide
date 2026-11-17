@@ -56,8 +56,8 @@ from the middle of a queue, testing against a reference model, benchmarking, and
 
 ## The API
 
-You implement this class. The full header, a test suite and a benchmark are in the project folder at
-`starter/projects/order-book/`.
+You implement this class. Create `order_book.hpp` with the interface below, then write your own test file and a
+benchmark next to it.
 
 ```cpp order_book.hpp
 using OrderId = std::uint64_t;
@@ -105,7 +105,6 @@ public:
 | `depth(n)` | O(n) |
 
 ```bash
-cd starter/projects/order-book
 g++ -std=c++20 -O2 -Wall -Wextra -fsanitize=address,undefined order_book_test.cpp -o test && ./test
 g++ -std=c++20 -O2 -march=native order_book_bench.cpp -o bench && ./bench
 ```
@@ -159,8 +158,8 @@ Copy what you need out of the index entry *before* erasing it, since erasing inv
 
 :::step Queries: best, front, volume, depth
 With the maps sorted the right way, the best level is always `begin()`. `depth` walks forward from `begin()`.
-Run the test suite now. The final test replays 200,000 random operations against a simple model; if it fails,
-add prints to find the first operation where your book and the model disagree.
+Run your tests now. Include one that replays 200,000 random operations against a simple model (a `std::map` of
+`std::deque`s is fine); if it fails, add prints to find the first operation where your book and the model disagree.
 :::hint
 Writing every query twice (once for bids, once for asks) gets tedious because the two maps have different types.
 A small private template helper that takes the side and a generic lambda, `with_side(side, [&](auto& m) {...})`,
@@ -168,7 +167,7 @@ removes the duplication.
 :::
 
 :::step Measure version 1
-Run `order_book_bench`. Record ns/op. For reference, a straightforward version 1 like the one described above runs
+Write `order_book_bench.cpp`: a loop of random adds, cancels and executes against a warm book. Run it and record ns/op. For reference, a straightforward version 1 like the one described above runs
 at about **310 ns/op** on the test machine (i5-6500T). Then profile it:
 
 ```bash
@@ -211,7 +210,7 @@ back to a `std::map` for far-away levels. Far levels are rarely touched, so the 
 
 ## Testing and benchmarking
 
-- The provided suite covers the API contract, FIFO priority, aggregation, depth, and a randomized comparison
+- Your suite should cover the API contract, FIFO priority, aggregation, depth, and a randomized comparison
   against a model. Keep it green after every change: performance work on a broken book is worthless.
 - Run the tests under `-fsanitize=address,undefined` after every refactor. Index-based linked lists are easy to
   corrupt silently.
