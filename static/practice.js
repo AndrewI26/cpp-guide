@@ -89,17 +89,55 @@
   const problemEl = document.querySelector(".problem[data-slug]");
   if (problemEl) {
     const slug = problemEl.dataset.slug;
+    const cfg = JSON.parse(document.getElementById("problem-config").textContent);
+    const hl = window.cppHighlight;
     const editor = document.getElementById("editor");
+    const editorHl = document.getElementById("editor-hl");
     const output = document.getElementById("output");
     const status = document.getElementById("run-status");
     const runBtn = document.getElementById("run-code");
+    const runnerSel = document.getElementById("runner-select");
     const solvedBtn = document.getElementById("toggle-solved");
     const flag = document.getElementById("solved-flag");
-    const starter = document.getElementById("starter-code").textContent;
+    const starter = cfg.starter;
     const codeKey = `code:${slug}`;
+    const RUN_TIMEOUT_MS = 10000;
 
     const saved = store.get(codeKey, null);
     if (saved !== null) editor.value = saved;
+
+    // ----- syntax highlighting: a <pre> under a transparent <textarea>
+    function paintCode() {
+      // trailing newline keeps the last line's height when the text ends in "\n"
+      editorHl.innerHTML = hl.cpp(editor.value) + "\n";
+      syncScroll();
+    }
+    function syncScroll() {
+      editorHl.parentElement.scrollTop = editor.scrollTop;
+      editorHl.parentElement.scrollLeft = editor.scrollLeft;
+    }
+    editor.addEventListener("scroll", syncScroll);
+    paintCode();
+
+    // ----- where to run
+    const hasWasm = cfg.wasm.enabled && typeof Worker !== "undefined" && typeof WebAssembly !== "undefined";
+    if (!hasWasm) runnerSel.querySelector('option[value="browser"]').disabled = true;
+    let mode = store.get("runner", "browser");
+    if (mode === "browser" && !hasWasm) mode = "server";
+    runnerSel.value = mode;
+    function describeMode() {
+      if (output.dataset.dirty) return;
+      output.textContent = mode === "browser"
+        ? `Press “Run tests” to compile with Clang ${cfg.wasm.version.split("-")[0]} (-std=c++20 -O2) right here in your browser.\n` +
+          "The first run downloads the compiler (~25 MB); later runs reuse it."
+        : "Press “Run tests” to compile on the server with g++ -std=c++20 -O2 and AddressSanitizer + UBSan.";
+    }
+    runnerSel.addEventListener("change", () => {
+      mode = runnerSel.value;
+      store.set("runner", mode);
+      describeMode();
+    });
+    describeMode();
 
     function paintSolved() {
       const s = solved.has(slug);
@@ -111,6 +149,7 @@
 
     let saveTimer;
     editor.addEventListener("input", () => {
+      paintCode();
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => store.set(codeKey, editor.value), 300);
     });
@@ -148,6 +187,7 @@
       if (editor.value !== starter && !confirm("Replace your code with the starter code?")) return;
       editor.value = starter;
       store.set(codeKey, starter);
+      paintCode();
     });
 
     solvedBtn.addEventListener("click", () => {
@@ -156,18 +196,111 @@
       paintSolved();
     });
 
-    async function run() {
-      runBtn.disabled = true;
+    function setOutput(text) {
+      output.dataset.dirty = "1";
+      output.innerHTML = hl.output(text);
+      output.scrollTop = output.scrollHeight;
+    }
+    function finish(ok, label, text) {
+      status.className = `run-status ${ok ? "pass" : "fail"}`;
+      status.textContent = label;
+      setOutput(text);
+      if (ok) { solved.add(slug); saveSolved(); paintSolved(); }
+    }
+
+    // ----- in-browser: Clang (WASM) in one worker, the program in a throwaway worker
+    let compiler = null, judgeHpp = null, nextId = 0;
+    function compile(files, onProgress) {
+      compiler ??= new Worker(cfg.wasm.worker, { type: "module" });
+      const id = ++nextId;
+      return new Promise((resolve) => {
+        const onMsg = ({ data }) => {
+          if (data.id !== id) return;
+          if (data.type === "progress") return onProgress(data);
+          compiler.removeEventListener("message", onMsg);
+          resolve(data);
+        };
+        compiler.addEventListener("message", onMsg);
+        compiler.onerror = (ev) => {
+          compiler.removeEventListener("message", onMsg);
+          compiler.terminate(); compiler = null;
+          resolve({ ok: false, internal: true, output: `Couldn't start the compiler: ${ev.message || "worker error"}` });
+        };
+        compiler.postMessage({
+          id, files, bundle: new URL(cfg.wasm.bundle, location.href).href,
+          args: ["clang++", "-std=c++20", "-O2", "-Wall", "-Wextra", "-fno-color-diagnostics",
+                 "-Wl,-z,stack-size=8388608", "main.cpp", "-o", "prog.wasm"],
+        });
+      });
+    }
+    function execute(wasm, onOut) {
+      return new Promise((resolve) => {
+        const w = new Worker(cfg.wasm.runner);
+        const timer = setTimeout(() => {
+          w.terminate();
+          resolve({ code: -1, timedOut: true });
+        }, RUN_TIMEOUT_MS);
+        w.onmessage = ({ data }) => {
+          if (data.type === "out") return onOut(data.text);
+          clearTimeout(timer); w.terminate(); resolve(data);
+        };
+        w.onerror = (ev) => {
+          clearTimeout(timer); w.terminate();
+          resolve({ code: -1, error: `Runtime error: ${ev.message || "worker error"}` });
+        };
+        w.postMessage({ wasm }, [wasm.buffer]);
+      });
+    }
+    const UNSUPPORTED = /exceptions disabled|cannot use '(throw|try)'|std::thread|<thread>|pthread_create/;
+
+    async function runInBrowser() {
+      status.className = "run-status";
+      status.textContent = compiler ? "Compiling…" : "Loading compiler…";
+      if (judgeHpp === null) {
+        const res = await fetch(cfg.wasm.judge);
+        if (!res.ok) throw new Error(`couldn't load judge.hpp (HTTP ${res.status})`);
+        judgeHpp = await res.text();
+      }
+      const files = {
+        "solution.hpp": editor.value,
+        "judge.hpp": judgeHpp,
+        "main.cpp": '#include "solution.hpp"\n#include "judge.hpp"\n#line 1 "tests.cpp"\n' + cfg.tests,
+      };
+      const c = await compile(files, ({ done, total }) => {
+        const pct = Math.min(100, Math.round((100 * done) / total));
+        status.textContent = pct < 100 ? `Downloading compiler… ${pct}%` : "Compiling…";
+      });
+      const warnings = (c.output || "").trim();
+      if (!c.ok) {
+        let text = warnings;
+        if (c.internal) text = `The in-browser compiler failed to load.\n\n${text}\n\nSwitch to “Server” to run on the server instead.`;
+        else if (UNSUPPORTED.test(text)) text += "\n\nThe in-browser compiler (WebAssembly) has no exceptions or threads. " +
+          "Switch to “Server” above to run this one with g++.";
+        return finish(false, c.internal ? "Compiler unavailable" : "Compile error", text);
+      }
+      status.textContent = "Running…";
+      let out = "";
+      const r = await execute(c.wasm, (t) => { out += t; setOutput(out); });
+      const timing = `compile ${c.ms} ms · run ${r.ms ?? RUN_TIMEOUT_MS} ms · Clang ${cfg.wasm.version.split("-")[0]} (WebAssembly)`;
+      let text = out.trim();
+      if (r.timedOut) text += `\nTime limit exceeded (${RUN_TIMEOUT_MS / 1000}s).`;
+      if (r.error) text += `\n${r.error}`;
+      if (warnings) text = `${warnings}\n\n${text}`;
+      const ok = r.code === 0 && !r.error;
+      finish(ok, ok ? "All tests passed" : r.timedOut ? "Time limit exceeded" : "Tests failed", `${text.trim()}\n\n${timing}`);
+    }
+
+    // ----- server: POST /api/run (g++ with sanitizers)
+    async function runOnServer() {
       status.className = "run-status";
       status.textContent = "Compiling…";
-      output.textContent = "";
       try {
-        const res = await fetch("/api/run", {
+        const res = await fetch(`${document.body.dataset.base}/api/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ slug, code: editor.value }),
         });
-        if (res.status === 401) throw new Error("Running code on this site requires the runner password.");
+        if (res.status === 401) throw new Error("Running code on the server requires the runner password.");
         if (!res.ok) {
           let msg = `HTTP ${res.status}`;
           try { msg = (await res.json()).error || msg; } catch (_) {}
@@ -175,20 +308,28 @@
         }
         const r = await res.json();
         const timing = r.run_ms !== undefined ? `compile ${r.compile_ms} ms · run ${r.run_ms} ms` : "";
-        if (r.ok) {
-          status.className = "run-status pass";
-          status.textContent = "All tests passed";
-          solved.add(slug); saveSolved(); paintSolved();
-        } else {
-          status.className = "run-status fail";
-          status.textContent = r.stage === "compile" ? "Compile error" : r.stage === "run" ? "Tests failed" : "Error";
-        }
-        output.textContent = (r.output || "").trim() + (timing ? `\n\n${timing}` : "");
+        const label = r.ok ? "All tests passed"
+          : r.stage === "compile" ? "Compile error" : r.stage === "run" ? "Tests failed" : "Error";
+        finish(r.ok, label, (r.output || "").trim() + (timing ? `\n\n${timing}` : ""));
       } catch (err) {
-        status.className = "run-status fail";
-        status.textContent = "Runner unavailable";
-        output.textContent = err.message + "\n\nYou can always run problems locally:\n\n    uv run cpp-guide serve";
+        const hint = hasWasm ? "Switch to “In browser” above to compile without the server." :
+          "You can always run problems locally:\n\n    uv run cpp-guide serve";
+        finish(false, "Runner unavailable", `${err.message}\n\n${hint}`);
+      }
+    }
+
+    let running = false;
+    async function run() {
+      if (running) return;
+      running = true;
+      runBtn.disabled = true;
+      setOutput("");
+      try {
+        await (mode === "browser" ? runInBrowser() : runOnServer());
+      } catch (err) {
+        finish(false, "Error", String(err && err.message || err));
       } finally {
+        running = false;
         runBtn.disabled = false;
       }
     }

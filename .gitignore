@@ -6,3 +6,4 @@ site.old/
 .runner-password
 deploy/Caddyfile.merged
 deploy/Caddyfile.cpp
+vendor/

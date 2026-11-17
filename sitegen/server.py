@@ -52,8 +52,16 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(builder.SITE), **kwargs)
 
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".wasm": "application/wasm",
+                      ".hpp": "text/plain; charset=utf-8"}
+
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        # The WASM compiler lives in a versioned directory, so it can be cached forever; everything
+        # else is rebuilt on change and must not be cached.
+        if self.path.split("?")[0].startswith("/static/vendor/"):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
     def log_message(self, fmt, *args):  # only log API calls and errors

@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import json
 
+from . import toolchain
 from .content import Lesson, Problem, Project
 from .md import render as md_render
 
@@ -282,6 +283,11 @@ def problem_page(p: Problem, prev: Problem | None, nxt: Problem | None, base: st
     tags = "".join(f'<a class="chip" href="{base}/practice/?tag={e(t)}">{e(t)}</a>' for t in p.tags)
     nav_prev = f'<a href="{base}{prev.url}">← #{prev.num}</a>' if prev else "<span></span>"
     nav_next = f'<a href="{base}{nxt.url}">#{nxt.num} →</a>' if nxt else "<span></span>"
+    wasm = toolchain.available()
+    wasm_cfg = {"enabled": wasm, "version": toolchain.VERSION,
+                "bundle": f"{base}{toolchain.WEB_PATH}/bundle.js", "judge": f"{base}/static/judge.hpp",
+                "worker": f"{base}/static/clang-worker.js", "runner": f"{base}/static/wasi-runner.js"}
+    page_cfg = {"starter": p.starter, "tests": p.tests, "wasm": wasm_cfg}
     body = f"""
 <div class="problem" data-slug="{e(p.slug)}">
   <section class="problem-statement">
@@ -295,18 +301,26 @@ def problem_page(p: Problem, prev: Problem | None, nxt: Problem | None, base: st
   <section class="workspace">
     <div class="editor-head"><span>solution.hpp</span>
       <div class="editor-actions">
+        <select class="select runner-select" id="runner-select" aria-label="Where to run">
+          <option value="browser"{' disabled' if not wasm else ''}>In browser (Clang)</option>
+          <option value="server">Server (g++ + sanitizers)</option>
+        </select>
         <button class="btn btn-ghost" id="reset-code" type="button">Reset</button>
         <button class="btn btn-ghost" id="toggle-solved" type="button">Mark solved</button>
         <button class="btn btn-primary" id="run-code" type="button">Run tests <kbd>Ctrl ↵</kbd></button>
       </div>
     </div>
-    <textarea id="editor" class="editor" spellcheck="false" autocapitalize="off" autocomplete="off">{e(p.starter)}</textarea>
+    <div class="code-editor">
+      <pre class="code-hl" aria-hidden="true"><code id="editor-hl"></code></pre>
+      <textarea id="editor" class="editor" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="solution.hpp">{e(p.starter)}</textarea>
+    </div>
     <div class="output-head"><span>Output</span><span id="run-status" class="run-status"></span></div>
-    <pre id="output" class="output">Press “Run tests” to compile with g++ -std=c++20 -O2 and AddressSanitizer + UBSan.</pre>
+    <pre id="output" class="output"></pre>
   </section>
 </div>
-<script id="starter-code" type="text/plain">{e(p.starter)}</script>"""
-    return layout(f"#{p.num} {p.title}", body, base, "practice", scripts=("practice.js",), body_class="page-problem")
+<script id="problem-config" type="application/json">{json.dumps(page_cfg).replace("</", "<\\/")}</script>"""
+    return layout(f"#{p.num} {p.title}", body, base, "practice", scripts=("cpp-highlight.js", "practice.js"),
+                  body_class="page-problem")
 
 
 # -------------------------------------------------------------------- home

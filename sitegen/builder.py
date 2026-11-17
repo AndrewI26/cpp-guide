@@ -5,7 +5,8 @@ import shutil
 import time
 from pathlib import Path
 
-from . import render
+from . import render, toolchain
+from . import judge
 from .content import CONTENT, ROOT, load_curriculum, load_problems, load_projects
 
 SITE = ROOT / "site"
@@ -17,8 +18,10 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text)
 
 
-def build(base: str = "", quiet: bool = False) -> Path:
+def build(base: str = "", quiet: bool = False, fetch: bool = True) -> Path:
     t0 = time.perf_counter()
+    if fetch:
+        toolchain.fetch(quiet=quiet)
     base = base.rstrip("/")
     tmp = ROOT / "site.tmp"
     shutil.rmtree(tmp, ignore_errors=True)
@@ -50,6 +53,8 @@ def build(base: str = "", quiet: bool = False) -> Path:
         _write(tmp / p.url.lstrip("/"), render.problem_page(p, prev, nxt, base))
 
     shutil.copytree(STATIC, tmp / "static")
+    (tmp / "static" / "judge.hpp").write_text(judge.JUDGE_HPP)
+    wasm = toolchain.install(tmp / "static")
 
     # Swap atomically-ish so a running server never sees a half-built site.
     old = ROOT / "site.old"
@@ -62,7 +67,8 @@ def build(base: str = "", quiet: bool = False) -> Path:
     if not quiet:
         ms = (time.perf_counter() - t0) * 1000
         print(f"Built {len(written)} lessons ({len(lessons)} planned) and {len(problems)} problems "
-              f"into {SITE.relative_to(ROOT)}/ in {ms:.0f} ms")
+              f"into {SITE.relative_to(ROOT)}/ in {ms:.0f} ms"
+              + ("" if wasm else " (no WASM compiler: in-browser runs disabled)"))
     return SITE
 
 
