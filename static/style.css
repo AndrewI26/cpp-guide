@@ -591,7 +591,6 @@ body.page-problem .content { padding-top: 32px; }
   -webkit-text-fill-color: transparent;
 }
 .editor::selection { background: color-mix(in srgb, var(--info) 28%, transparent); -webkit-text-fill-color: transparent; }
-.runner-select { height: 36px; padding: 0 32px 0 14px; font-size: 13px; }
 .out-bad { color: var(--bad); } .out-warn { color: var(--warn); }
 .out-note { color: var(--info); } .out-good { color: var(--good); font-weight: 600; }
 .output-head { border-top: 1px solid var(--border); }

@@ -30,7 +30,7 @@ public:
 ```
 
 Growth doubles the capacity. Elements must be properly constructed and destroyed: the tests use a type that
-counts its live instances, and ASan checks for leaks.
+counts its live instances, so leaks and double destruction show up as failures.
 
 ## Starter Code
 

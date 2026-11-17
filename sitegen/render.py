@@ -230,8 +230,8 @@ def practice_index(problems: list[Problem], base: str) -> str:
 <section class="page-hero">
   <p class="eyebrow">Practice</p>
   <h1>Sharpen the fundamentals.</h1>
-  <p class="lede">{len(problems)} problems, each compiled and run against tests with AddressSanitizer and UBSan
-  on your machine. Filter by difficulty or topic and track what you've solved.</p>
+  <p class="lede">{len(problems)} problems, each compiled with Clang and run against tests right in your
+  browser. Filter by difficulty or topic and track what you've solved.</p>
 </section>
 <section class="stats">
   <div class="stat"><div class="stat-num" id="stat-solved">0</div><div class="stat-label">Solved of {len(problems)}</div></div>
@@ -301,10 +301,6 @@ def problem_page(p: Problem, prev: Problem | None, nxt: Problem | None, base: st
   <section class="workspace">
     <div class="editor-head"><span>solution.hpp</span>
       <div class="editor-actions">
-        <select class="select runner-select" id="runner-select" aria-label="Where to run">
-          <option value="browser"{' disabled' if not wasm else ''}>In browser (Clang)</option>
-          <option value="server">Server (g++ + sanitizers)</option>
-        </select>
         <button class="btn btn-ghost" id="reset-code" type="button">Reset</button>
         <button class="btn btn-ghost" id="toggle-solved" type="button">Mark solved</button>
         <button class="btn btn-primary" id="run-code" type="button">Run tests <kbd>Ctrl ↵</kbd></button>

@@ -1,7 +1,10 @@
-"""Compile and run practice-problem submissions locally with g++.
+"""The test harness for practice problems.
 
-A submission is the contents of `solution.hpp`. The problem's Tests section is a
-`main()` that includes it and uses the CHECK macros from judge.hpp below.
+JUDGE_HPP is published as static/judge.hpp and compiled in the browser together with the
+visitor's `solution.hpp` and the problem's Tests section (a `main()` using the CHECK macros).
+
+run() is only for `cpp-guide check`, which authors use on their own machine to verify that
+reference solutions pass with g++ and sanitizers. The site never runs code on the server.
 """
 from __future__ import annotations
 
@@ -9,7 +12,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 
 JUDGE_HPP = r"""#pragma once
@@ -58,8 +60,6 @@ CXX = os.environ.get("CXX", "g++")
 CXXFLAGS = ["-std=c++20", "-O2", "-g", "-Wall", "-Wextra", "-pthread",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
 MAX_OUTPUT = 20_000
-MAX_JOBS = int(os.environ.get("CPPGUIDE_MAX_JOBS", "2"))
-_slots = threading.BoundedSemaphore(MAX_JOBS)   # caps concurrent compiles/runs
 
 
 def compiler_available() -> bool:
@@ -67,15 +67,6 @@ def compiler_available() -> bool:
 
 
 def run(solution: str, tests: str, compile_timeout: int = 60, run_timeout: int = 10) -> dict:
-    if not _slots.acquire(timeout=90):
-        return {"ok": False, "stage": "setup", "output": "The runner is busy. Try again in a moment."}
-    try:
-        return _run(solution, tests, compile_timeout, run_timeout)
-    finally:
-        _slots.release()
-
-
-def _run(solution: str, tests: str, compile_timeout: int, run_timeout: int) -> dict:
     if not compiler_available():
         return {"ok": False, "stage": "setup", "output": f"Compiler '{CXX}' not found on PATH."}
     if not tests.strip():

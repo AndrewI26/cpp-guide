@@ -215,7 +215,8 @@ WRITE of size 8 at 0x7ffd... thread T0
 ```
 
 It tells you the exact line, whether it was a read or a write, and which variable overflowed. The practice
-problems on this site always run with ASan and UBSan, so you'll get used to reading these reports.
+problems on this site run in your browser, where sanitizers aren't available, so build your own solutions locally
+with `-fsanitize=address,undefined` too and get used to reading these reports.
 
 ### Exercises
 

@@ -28,8 +28,8 @@ public:
 template <class T, class... Args> UniquePtr<T> make_unique_ptr(Args&&... args);
 ```
 
-`sizeof(UniquePtr<T>)` must equal `sizeof(T*)`. The test counts constructions and destructions, and ASan will
-catch any leak or double delete.
+`sizeof(UniquePtr<T>)` must equal `sizeof(T*)`. The test counts constructions and destructions, so any leak or
+double delete fails it.
 
 ## Starter Code
 

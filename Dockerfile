@@ -1,13 +1,6 @@
-# One image, two roles (see docker-compose.yml):
-#   web    - serves the built site and forwards /api/run to the runner
-#   runner - compiles and runs practice submissions in an isolated container
+# Serves the built site. Practice code is compiled and run in visitors' browsers (Clang/WASM,
+# downloaded during the build), so the image has no compiler and runs no submitted code.
 FROM python:3.13-slim-trixie
-
-# g++ (with libasan/libubsan for the sanitizers) is only needed by the runner, but keeping one
-# image keeps the build simple.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends g++ \
- && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv
 
@@ -32,5 +25,5 @@ RUN uv sync --frozen --no-dev \
  && chown -R app:app /app
 
 USER app
-EXPOSE 8000 9000
+EXPOSE 8000
 CMD ["cpp-guide", "serve", "--host", "0.0.0.0", "--port", "8000", "--no-watch", "--no-build"]

@@ -98,19 +98,13 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build", help="build the static site into site/")
     b.add_argument("--base", default="", help="URL prefix when hosting under a sub-path, e.g. /cpp-guide")
 
-    s = sub.add_parser("serve", help="build, serve, rebuild on change, and run practice submissions")
+    s = sub.add_parser("serve", help="build, serve, and rebuild on change")
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--no-watch", action="store_true")
     s.add_argument("--no-build", action="store_true", help="serve the existing site/ without rebuilding")
-    s.add_argument("--runner-url", default=None, help="forward /api/run to this runner (e.g. http://runner:9000)")
-    s.add_argument("--no-runner", action="store_true", help="disable /api/run entirely")
 
-    rn = sub.add_parser("runner", help="run only the code runner (POST /api/run), for an isolated container")
-    rn.add_argument("--host", default="0.0.0.0")
-    rn.add_argument("--port", type=int, default=9000)
-
-    c = sub.add_parser("check", help="verify every practice problem's reference solution passes its tests")
+    c = sub.add_parser("check", help="locally verify every practice problem's reference solution passes its tests (needs g++)")
     c.add_argument("only", nargs="*", help="problem slugs to check (default: all)")
     c.add_argument("-j", "--jobs", type=int, default=4)
 
@@ -125,13 +119,9 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(args)
     if args.cmd == "new-problem":
         return cmd_new(args)
-    if args.cmd == "runner":
-        server.run_runner(args.host, args.port)
-        return 0
     if args.cmd in (None, "serve"):
         server.serve(getattr(args, "host", "127.0.0.1"), getattr(args, "port", 8000),
-                     watch=not getattr(args, "no_watch", False), build=not getattr(args, "no_build", False),
-                     runner_url=getattr(args, "runner_url", None), runner=not getattr(args, "no_runner", False))
+                     watch=not getattr(args, "no_watch", False), build=not getattr(args, "no_build", False))
         return 0
     return 0
 

@@ -7,8 +7,8 @@ trading system, that the concept solves. Then it builds the idea up step by step
 exercises, with solutions hidden in dropdowns, so you can check your understanding before moving on.
 
 **The practice set** is a collection of graded problems tagged by topic, each with tests. Write your solution in the
-browser, press **Run tests**, and it is compiled with `g++ -std=c++20 -O2` under AddressSanitizer and
-UndefinedBehaviorSanitizer on your own machine.
+browser, press **Run tests**, and it is compiled with Clang (`-std=c++20 -O2`, built for WebAssembly) and run
+right there in your browser. Nothing is sent to a server.
 
 ## Who it's for
 

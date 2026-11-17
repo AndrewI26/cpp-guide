@@ -1,4 +1,4 @@
-// Practice list filtering and the problem-page editor / test runner.
+// Practice list filtering and the problem-page editor / in-browser test runner.
 (function () {
   const store = window.cppGuideStore;
   const solved = new Set(store.get("solved", []));
@@ -96,7 +96,6 @@
     const output = document.getElementById("output");
     const status = document.getElementById("run-status");
     const runBtn = document.getElementById("run-code");
-    const runnerSel = document.getElementById("runner-select");
     const solvedBtn = document.getElementById("toggle-solved");
     const flag = document.getElementById("solved-flag");
     const starter = cfg.starter;
@@ -119,25 +118,18 @@
     editor.addEventListener("scroll", syncScroll);
     paintCode();
 
-    // ----- where to run
+    // ----- compiler availability
     const hasWasm = cfg.wasm.enabled && typeof Worker !== "undefined" && typeof WebAssembly !== "undefined";
-    if (!hasWasm) runnerSel.querySelector('option[value="browser"]').disabled = true;
-    let mode = store.get("runner", "browser");
-    if (mode === "browser" && !hasWasm) mode = "server";
-    runnerSel.value = mode;
-    function describeMode() {
-      if (output.dataset.dirty) return;
-      output.textContent = mode === "browser"
-        ? `Press “Run tests” to compile with Clang ${cfg.wasm.version.split("-")[0]} (-std=c++20 -O2) right here in your browser.\n` +
-          "The first run downloads the compiler (~25 MB); later runs reuse it."
-        : "Press “Run tests” to compile on the server with g++ -std=c++20 -O2 and AddressSanitizer + UBSan.";
+    const clangVersion = cfg.wasm.version.split("-")[0];
+    if (hasWasm) {
+      output.textContent = `Press “Run tests” to compile with Clang ${clangVersion} (-std=c++20 -O2) right here in your browser.\n` +
+        "The first run downloads the compiler (~25 MB); later runs reuse it. Nothing is sent to a server.";
+    } else {
+      output.textContent = cfg.wasm.enabled
+        ? "Your browser doesn't support WebAssembly workers, so tests can't run here. Try a current Chrome, Firefox or Safari."
+        : "The in-browser compiler isn't installed on this site, so tests can't run.";
+      runBtn.disabled = true;
     }
-    runnerSel.addEventListener("change", () => {
-      mode = runnerSel.value;
-      store.set("runner", mode);
-      describeMode();
-    });
-    describeMode();
 
     function paintSolved() {
       const s = solved.has(slug);
@@ -197,7 +189,6 @@
     });
 
     function setOutput(text) {
-      output.dataset.dirty = "1";
       output.innerHTML = hl.output(text);
       output.scrollTop = output.scrollHeight;
     }
@@ -228,7 +219,9 @@
         };
         compiler.postMessage({
           id, files, bundle: new URL(cfg.wasm.bundle, location.href).href,
-          args: ["clang++", "-std=c++20", "-O2", "-Wall", "-Wextra", "-fno-color-diagnostics",
+          // The WASM sysroot's libc++/libc++abi are built without exceptions, so compile without
+          // them too: library code then aborts instead of throwing (otherwise __cxa_throw is undefined).
+          args: ["clang++", "-std=c++20", "-O2", "-fno-exceptions", "-Wall", "-Wextra", "-fno-color-diagnostics",
                  "-Wl,-z,stack-size=8388608", "main.cpp", "-o", "prog.wasm"],
         });
       });
@@ -251,7 +244,7 @@
         w.postMessage({ wasm }, [wasm.buffer]);
       });
     }
-    const UNSUPPORTED = /exceptions disabled|cannot use '(throw|try)'|std::thread|<thread>|pthread_create/;
+    const UNSUPPORTED = /exceptions disabled|cannot use '(throw|try)'|__cxa_|std::thread|<thread>|pthread_create/;
 
     async function runInBrowser() {
       status.className = "run-status";
@@ -273,15 +266,15 @@
       const warnings = (c.output || "").trim();
       if (!c.ok) {
         let text = warnings;
-        if (c.internal) text = `The in-browser compiler failed to load.\n\n${text}\n\nSwitch to “Server” to run on the server instead.`;
-        else if (UNSUPPORTED.test(text)) text += "\n\nThe in-browser compiler (WebAssembly) has no exceptions or threads. " +
-          "Switch to “Server” above to run this one with g++.";
+        if (c.internal) text = `The in-browser compiler failed to load. Reload the page to try again.\n\n${text}`;
+        else if (UNSUPPORTED.test(text)) text += "\n\nThe in-browser compiler (WebAssembly) has no exceptions or threads, " +
+          "so this problem can't be run here. Compile it locally with g++ -std=c++20 -pthread.";
         return finish(false, c.internal ? "Compiler unavailable" : "Compile error", text);
       }
       status.textContent = "Running…";
       let out = "";
       const r = await execute(c.wasm, (t) => { out += t; setOutput(out); });
-      const timing = `compile ${c.ms} ms · run ${r.ms ?? RUN_TIMEOUT_MS} ms · Clang ${cfg.wasm.version.split("-")[0]} (WebAssembly)`;
+      const timing = `compile ${c.ms} ms · run ${r.ms ?? RUN_TIMEOUT_MS} ms · Clang ${clangVersion} (WebAssembly)`;
       let text = out.trim();
       if (r.timedOut) text += `\nTime limit exceeded (${RUN_TIMEOUT_MS / 1000}s).`;
       if (r.error) text += `\n${r.error}`;
@@ -290,47 +283,19 @@
       finish(ok, ok ? "All tests passed" : r.timedOut ? "Time limit exceeded" : "Tests failed", `${text.trim()}\n\n${timing}`);
     }
 
-    // ----- server: POST /api/run (g++ with sanitizers)
-    async function runOnServer() {
-      status.className = "run-status";
-      status.textContent = "Compiling…";
-      try {
-        const res = await fetch(`${document.body.dataset.base}/api/run`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug, code: editor.value }),
-        });
-        if (res.status === 401) throw new Error("Running code on the server requires the runner password.");
-        if (!res.ok) {
-          let msg = `HTTP ${res.status}`;
-          try { msg = (await res.json()).error || msg; } catch (_) {}
-          throw new Error(msg);
-        }
-        const r = await res.json();
-        const timing = r.run_ms !== undefined ? `compile ${r.compile_ms} ms · run ${r.run_ms} ms` : "";
-        const label = r.ok ? "All tests passed"
-          : r.stage === "compile" ? "Compile error" : r.stage === "run" ? "Tests failed" : "Error";
-        finish(r.ok, label, (r.output || "").trim() + (timing ? `\n\n${timing}` : ""));
-      } catch (err) {
-        const hint = hasWasm ? "Switch to “In browser” above to compile without the server." :
-          "You can always run problems locally:\n\n    uv run cpp-guide serve";
-        finish(false, "Runner unavailable", `${err.message}\n\n${hint}`);
-      }
-    }
-
     let running = false;
     async function run() {
-      if (running) return;
+      if (running || !hasWasm) return;
       running = true;
       runBtn.disabled = true;
       setOutput("");
       try {
-        await (mode === "browser" ? runInBrowser() : runOnServer());
+        await runInBrowser();
       } catch (err) {
         finish(false, "Error", String(err && err.message || err));
       } finally {
         running = false;
-        runBtn.disabled = false;
+        runBtn.disabled = !hasWasm;
       }
     }
     runBtn.addEventListener("click", run);
